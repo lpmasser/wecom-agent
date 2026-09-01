@@ -2,7 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Agent Skill](https://img.shields.io/badge/Agent%20Skill-Codex-blue.svg)](SKILL.md)
-[![Python](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![CI](https://github.com/tzwkb/wecom-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/tzwkb/wecom-agent/actions/workflows/ci.yml)
 
 [Documentation](https://wecom-agent.readthedocs.io/en/latest/) | [English](README.md) | 中文
 
@@ -37,20 +38,20 @@ $PY decrypt/macos/voice_transcribe.py
 
 ```bash
 npm install -g @wecom/cli
-wecom-cli init
-wecom-cli auth show --auth-status
+wecom-cli auth init
+wecom-cli auth show --status
 
 $PY -m online.selfcheck
 ```
 
 已实现封装：
 
-- `online.docs`：创建普通文档、Markdown 覆写正文、创建智能文档。
+- `online.docs`：创建/读取普通文档、Markdown 覆写正文、创建或导入智能主页；结构化旧版智能文档 payload 仅保留给 CLI `0.1.x`。
 - `online.local_docs`：读取本地已缓存/已下载的文档，作为 `get_doc_content` 缺失时的 fallback。
-- `online.sheets`：创建在线表格、读取表结构、新增/删除子表、追加行、更新区域。
-- `online.smartsheets`：创建智能表格、读取子表/字段、管理子表/字段、在已知 `record_id` 时增删改记录。
+- `online.sheets`：创建在线表格、读取表结构和单元格范围、新增/删除子表、追加行、更新区域。
+- `online.smartsheets`：跨新旧 CLI 创建智能表格、管理子表/字段/记录，并在新版读取记录。
 
-当前 `wecom-cli 0.1.9` 未暴露 `get_doc_content`、`sheet_get_data`、`smartsheet_get_records`，所以线上最新版内容读取仍标为不支持；本地缓存 fallback 只能读取本机已下载/已打开过的文件。
+`wecom-cli 1.1+` 引入了破坏性的多级命令模型，并补齐在线文档、在线表格、智能主页和智能表格服务。封装会自动识别版本并转换新版 payload；无法无损映射的旧版结构化智能主页 `pages` 仍会安全拒绝，应改用 Markdown 导入。详见 [CLI 迁移说明](docs/wecom-cli-migration.md)。
 
 ## MCP
 
@@ -58,9 +59,22 @@ $PY -m online.selfcheck
 bash setup.sh
 ```
 
-MCP 保留本地读取工具：`wecom_contacts/conversations/members/search/stats/todo/calendar/media/openfile`，并新增 `wecom_local_doc_read_path`、`wecom_local_doc_search` 读取本地缓存/下载文档。
+MCP 保留本地读取工具：`wecom_contacts/conversations/members/search/stats/todo/calendar/media/openfile`，并提供 `wecom_local_doc_read_path`、`wecom_local_doc_search` 读取本地缓存/下载文档。
 
-新增在线工具：`wecom_doc_create`、`wecom_doc_write_markdown`、`wecom_sheet_create`、`wecom_sheet_info`、`wecom_sheet_append_row`、`wecom_sheet_update_range`、`wecom_smartsheet_create`、`wecom_smartsheet_fields`、`wecom_smartsheet_add_records` 等。所有线上写操作必须传 `confirmed=True`。
+在线读取工具包括 `wecom_doc_read`、`wecom_sheet_get_range` 与 `wecom_smartsheet_records`；创建、导入、覆写、追加、更新等线上写操作仍必须传 `confirmed=True`。
+
+`setup.sh` 会根据锁定的 [requirements.txt](requirements.txt) 创建隔离 `.venv`；本地文档解析的可选依赖见 [requirements-documents.txt](requirements-documents.txt)。
+
+## 开发验证
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q server.py online decrypt tests
+ruff check online server.py tests
+pip-audit -r requirements.txt
+npm ci && npm run docs:build -- --output /tmp/wecom-agent-docs --quiet
+```
 
 ## 结构
 

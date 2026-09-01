@@ -1,58 +1,75 @@
-"""Probe current wecom-cli online document support."""
+"""Probe installed wecom-cli generation, authorization, and wrapper coverage."""
 
 import json
+import subprocess
 
 from . import wecom_cli
 
+CURRENT_SERVICES = ("doc", "sheet", "smartsheet", "smartpage")
 
-SUPPORTED_DOC_COMMANDS = [
-    "+smartpage_create",
-    "+smartsheet_add_records_auto_file",
-    "+smartsheet_update_records_auto_file",
-    "create_doc",
-    "edit_doc_content",
-    "smartpage_create",
-    "smartsheet_add_sheet",
-    "smartsheet_get_sheet",
-    "smartsheet_add_fields",
-    "smartsheet_update_fields",
-    "smartsheet_get_fields",
-    "smartsheet_add_records",
-    "smartsheet_update_sheet",
-    "smartsheet_delete_sheet",
-    "smartsheet_delete_fields",
-    "smartsheet_update_records",
-    "smartsheet_delete_records",
-    "sheet_get_info",
-    "sheet_add_sub",
-    "sheet_delete_sub",
-    "sheet_update_range_data",
-    "sheet_append_data",
-]
 
-KNOWN_UNSUPPORTED_DOC_COMMANDS = [
-    "get_doc_content",
-    "sheet_get_data",
-    "smartsheet_get_records",
-]
+def wrapper_support(generation):
+    if generation == "current":
+        return {
+            "documents": {"read": "supported", "write": "supported"},
+            "sheets": {"read": "supported", "write": "supported"},
+            "smartpages": {"create": "supported", "import": "supported", "structured_pages": "legacy-only"},
+            "smartsheets": {"read": "supported", "write": "supported"},
+        }
+    if generation == "legacy":
+        return {
+            "documents": {"read": "unsupported", "write": "supported"},
+            "sheets": {"read": "unsupported", "write": "supported"},
+            "smartpages": "supported",
+            "smartsheets": "supported",
+        }
+    return {
+        "documents": "unknown",
+        "sheets": "unknown",
+        "smartpages": "unknown",
+        "smartsheets": "unknown",
+    }
 
 
 def collect():
-    report = {
-        "version": _safe_text(wecom_cli.version),
-        "auth_status": _safe_text(wecom_cli.auth_status),
-        "doc_commands": {},
+    version_text = _safe_text(wecom_cli.version)
+    try:
+        generation = wecom_cli.cli_generation(version_text)
+    except ValueError:
+        generation = "unknown"
+
+    if generation == "unknown":
+        auth = "not_checked"
+    else:
+        auth = _safe_text(lambda: wecom_cli.auth_status(cli_version=version_text))
+
+    services = {}
+    names = CURRENT_SERVICES if generation == "current" else (("doc",) if generation == "legacy" else ())
+    for service in names:
+        services[service] = "available" if _safe_available(service) else "unavailable"
+
+    return {
+        "version": version_text,
+        "generation": generation,
+        "auth_status": auth,
+        "upgrade_recommended": generation == "legacy",
+        "services": services,
+        "python_wrappers": wrapper_support(generation),
     }
-    for command in SUPPORTED_DOC_COMMANDS + KNOWN_UNSUPPORTED_DOC_COMMANDS:
-        report["doc_commands"][command] = "supported" if wecom_cli.doc_command_supported(command) else "unsupported"
-    return report
 
 
 def _safe_text(func):
     try:
         return func()
-    except Exception as exc:
+    except (OSError, ValueError, subprocess.SubprocessError, wecom_cli.WecomCliError) as exc:
         return f"error: {exc}"
+
+
+def _safe_available(service):
+    try:
+        return wecom_cli.service_available(service)
+    except (OSError, subprocess.SubprocessError, wecom_cli.WecomCliError):
+        return False
 
 
 def main():

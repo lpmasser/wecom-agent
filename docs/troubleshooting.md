@@ -29,21 +29,32 @@ Confirm that the npm global binary directory is on `PATH` before running `python
 ## Authentication is missing
 
 ```bash
-wecom-cli init
-wecom-cli auth show --auth-status
+wecom-cli auth init
+wecom-cli auth show --status
 ```
 
 Complete the official authentication flow in the same user environment that runs the Python process.
 
 ## The enterprise does not support an API category
 
-Some enterprises reject `contact`, `msg`, `schedule`, or `meeting` permissions even after authentication. Treat the returned permission error as final for that enterprise configuration. Repeating the same request does not expand access.
+Some enterprises reject `contact`, `message`, `calendar`, or `meeting` permissions even after authentication. Treat the returned permission error as final for that enterprise configuration. Repeating the same request does not expand access.
 
 Use local contacts for identity lookup and the repository's supported document or sheet operations where appropriate.
 
+## A legacy or current command is rejected
+
+CLI `1.1+` renamed services, command paths, flags, payloads, and error output. Run:
+
+```bash
+wecom-cli --version
+python3 -m online.selfcheck
+```
+
+Do not reuse a legacy flat command or smart-sheet ID payload on a current CLI. See the [migration note](/wecom-cli-migration).
+
 ## An online document body cannot be read
 
-The tested `wecom-cli 0.1.9` does not expose `get_doc_content`. Search a locally cached or downloaded copy instead:
+Current CLI releases use `online.docs.read_document()`. If the installed CLI is legacy, the enterprise denies the read, or the workflow is offline, search a locally cached or downloaded copy instead:
 
 ```python
 from online.local_docs import search
@@ -53,11 +64,11 @@ result = search("document title")
 
 A fallback result may be stale. No local match means only that the file is absent from the searched roots.
 
-## Sheet cells or smart-sheet records cannot be listed
+## Smart-sheet record reads fail
 
-The tested CLI does not expose `sheet_get_data` or `smartsheet_get_records`. The wrappers can read standard sheet structure and smart-sheet field metadata, but they cannot verify current cell or record values online.
+CLI `1.1+` reads smart-sheet records through `online.smartsheets.get_records()`. CLI `0.1.x` has no corresponding read command and raises a compatibility error. On current releases, check authorization, the document target, `sheet_id`, and pagination values.
 
-Do not perform an update unless the target coordinates or record IDs have been verified through another authorized source.
+Do not perform an update unless the record IDs were obtained from a successful read or another authorized source.
 
 ## `PermissionError` requests confirmation
 
@@ -86,7 +97,7 @@ The file is an image or a scanned PDF without extractable text. Use an authorize
 Install the optional package needed by the format:
 
 ```bash
-python3 -m pip install openpyxl pdfplumber python-docx
+python3 -m pip install -r requirements-documents.txt
 ```
 
 Keep optional dependencies limited to the formats required by the current task.

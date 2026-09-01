@@ -5,6 +5,7 @@ entry 范式与 wechat 对齐:命令行 wecom_local.py 为唯一核心(通用/�
 前提:先跑 read_wecom.py 解密(macOS)/ extract+decrypt(Windows)。
 """
 import contextlib
+import importlib
 import io
 import json
 import os
@@ -13,20 +14,26 @@ import sqlite3
 import sys
 
 from mcp.server.fastmcp import FastMCP
+
 from online import docs as online_docs
 from online import local_docs as online_local_docs
 from online import sheets as online_sheets
 from online import smartsheets as online_smartsheets
-from online.wecom_cli import WecomCliError
+from online.wecom_cli import WecomCliCompatibilityError, WecomCliError
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_PLAT = "windows" if platform.system() == "Windows" else "macos"
-sys.path.insert(0, os.path.join(_HERE, "decrypt", _PLAT))
+_SYSTEM = platform.system()
+_PLAT = "windows" if _SYSTEM == "Windows" else ("macos" if _SYSTEM == "Darwin" else None)
 
-if _PLAT == "windows":
-    import wecom_win as L  # CMDS[cmd](key, args)
-else:
-    import wecom_local as L  # CMDS[cmd](args, js=False)
+
+def _local_module():
+    if _PLAT is None:
+        raise SystemExit(f"本地企微读取暂不支持 {_SYSTEM}；在线工具仍可使用。")
+    module_dir = os.path.join(_HERE, "decrypt", _PLAT)
+    if module_dir not in sys.path:
+        sys.path.insert(0, module_dir)
+    name = "wecom_win" if _PLAT == "windows" else "wecom_local"
+    return importlib.import_module(name)
 
 
 def _win_key():
@@ -39,11 +46,12 @@ def _win_key():
 def _call(cmd, args):
     buf = io.StringIO()
     try:
+        local = _local_module()
         with contextlib.redirect_stdout(buf):
             if _PLAT == "windows":
-                L.CMDS[cmd](_win_key(), args)
+                local.CMDS[cmd](_win_key(), args)
             else:
-                L.CMDS[cmd](args)
+                local.CMDS[cmd](args)
     except sqlite3.OperationalError as e:
         if "no such table" in str(e):
             return "解密 OK,但核心表缺失 → 数据未同步(可能新登录)。先打开企业微信浏览消息,等同步后重试。"
@@ -72,7 +80,13 @@ def _render(value):
 def _online(fn, *args, **kwargs):
     try:
         return _render(fn(*args, **kwargs))
-    except (PermissionError, ValueError, json.JSONDecodeError, WecomCliError) as e:
+    except (
+        PermissionError,
+        ValueError,
+        json.JSONDecodeError,
+        WecomCliError,
+        WecomCliCompatibilityError,
+    ) as e:
         return str(e)
 
 
@@ -165,14 +179,31 @@ def wecom_doc_write_markdown(content: str, docid: str = "", url: str = "", confi
 
 
 @mcp.tool()
-def wecom_smartpage_create(title: str, pages_json: str, confirmed: bool = False, auto_file: bool = False) -> str:
-    """在线智能文档:创建智能文档/智能主页。pages_json 为页面数组。写操作,confirmed=True 后执行。"""
+def wecom_doc_read(docid: str = "", url: str = "", content_type: str = "markdown") -> str:
+    """在线普通文档:读取最新版正文。需要 wecom-cli 1.1+。"""
+    return _online(online_docs.read_document, content_type=content_type, **_target(docid, url))
+
+
+@mcp.tool()
+def wecom_smartpage_create(title: str, pages_json: str = "[]", confirmed: bool = False, auto_file: bool = False) -> str:
+    """在线智能文档:创建智能主页。新版 CLI 的 pages_json 必须为空。写操作需确认。"""
     return _online(
         online_docs.create_smartpage,
         title,
         _json(pages_json, []),
         confirmed=confirmed,
         auto_file=auto_file,
+    )
+
+
+@mcp.tool()
+def wecom_smartpage_import(title: str, file_path: str, confirmed: bool = False) -> str:
+    """在线智能文档:从本地 Markdown 文件导入智能主页。需要新版 CLI，写操作需确认。"""
+    return _online(
+        online_docs.import_smartpage_markdown,
+        title,
+        file_path,
+        confirmed=confirmed,
     )
 
 
@@ -186,6 +217,24 @@ def wecom_sheet_create(title: str, confirmed: bool = False) -> str:
 def wecom_sheet_info(docid: str = "", url: str = "") -> str:
     """在线表格:读取表格基本信息和子表结构。"""
     return _online(online_sheets.get_info, **_target(docid, url))
+
+
+@mcp.tool()
+def wecom_sheet_get_range(
+    sheet_id: str,
+    cell_range: str,
+    docid: str = "",
+    url: str = "",
+    mode: str = "default",
+) -> str:
+    """在线表格:读取单元格范围。需要 wecom-cli 1.1+。"""
+    return _online(
+        online_sheets.get_range,
+        sheet_id=sheet_id,
+        cell_range=cell_range,
+        mode=mode,
+        **_target(docid, url),
+    )
 
 
 @mcp.tool()
@@ -284,6 +333,28 @@ def wecom_smartsheet_delete_sheet(sheet_id: str, docid: str = "", url: str = "",
 def wecom_smartsheet_fields(sheet_id: str, docid: str = "", url: str = "") -> str:
     """智能表格:读取字段列表。"""
     return _online(online_smartsheets.get_fields, sheet_id=sheet_id, **_target(docid, url))
+
+
+@mcp.tool()
+def wecom_smartsheet_records(
+    sheet_id: str,
+    docid: str = "",
+    url: str = "",
+    limit: int = 100,
+    cursor: str = "",
+    start: int = 0,
+    key_type: str = "",
+) -> str:
+    """智能表格:读取记录。需要新版 CLI；支持游标或起始偏移分页。"""
+    return _online(
+        online_smartsheets.get_records,
+        sheet_id=sheet_id,
+        limit=limit,
+        cursor=cursor or None,
+        start=None if cursor else start,
+        key_type=key_type or None,
+        **_target(docid, url),
+    )
 
 
 @mcp.tool()

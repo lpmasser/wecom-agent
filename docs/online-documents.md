@@ -1,18 +1,18 @@
 ---
 title: Online Documents
-description: Create WeCom documents, replace Markdown content, and use local cache fallback when online body reads are unavailable.
+description: Create, read, and replace WeCom document content across supported CLI generations.
 ---
 
 # Online Documents
 
-The `online.docs` module is a thin Python wrapper around authenticated `wecom-cli doc` commands. It creates normal documents, replaces normal document content with Markdown, and creates smart pages.
+The `online.docs` module translates normal-document operations across legacy CLI `0.1.x` and the current `1.1+` nested command model. Current releases support latest-body reads plus smart-page creation and Markdown import. Structured legacy smart-page payloads remain available only on `0.1.x`.
 
 ## Authenticate and inspect support
 
 ```bash
 npm install -g @wecom/cli
-wecom-cli init
-wecom-cli auth show --auth-status
+wecom-cli auth init
+wecom-cli auth show --status
 python3 -m online.selfcheck
 ```
 
@@ -26,7 +26,17 @@ from online.docs import create_document
 created = create_document("Release Checklist", confirmed=True)
 ```
 
-`create_document()` sends `create_doc` with `doc_type: 3`.
+`create_document()` sends legacy `doc create_doc` or current `doc create`, both with document type `3`.
+
+## Read latest document content
+
+```python
+from online.docs import read_document
+
+latest = read_document(docid="DOC_ID", content_type="markdown")
+```
+
+This requires `wecom-cli 1.1+` and calls `doc contents get`. Legacy `0.1.x` raises a compatibility error before making a request.
 
 ## Replace document content
 
@@ -42,7 +52,7 @@ updated = write_document_markdown(
 )
 ```
 
-The wrapper sends `edit_doc_content` with `content_type: 1`. This is a replacement operation, so confirm the full resulting body before execution.
+The wrapper sends legacy `doc edit_doc_content` or current `doc contents overwrite`. This is a replacement operation, so confirm the full resulting body before execution.
 
 ## Create a smart page
 
@@ -51,16 +61,28 @@ from online.docs import create_smartpage
 
 result = create_smartpage(
     "Project Hub",
-    pages=[{"title": "Overview", "content": "Current status"}],
+    pages=[],
     confirmed=True,
 )
 ```
 
-Set `auto_file=True` only when the installed CLI supports the `+smartpage_create` extension command.
+On CLI `1.1+`, `pages` must be empty because the current create API only accepts a title. A non-empty structured legacy payload is rejected before execution.
+
+Import an existing Markdown file when the page needs initial content:
+
+```python
+from online.docs import import_smartpage_markdown
+
+result = import_smartpage_markdown(
+    "Project Hub",
+    "/path/to/project-hub.md",
+    confirmed=True,
+)
+```
 
 ## Local document fallback
 
-The installed `wecom-cli 0.1.9` does not expose online normal-document body reads. `online.local_docs` can inspect files already cached, downloaded, or opened on the current device:
+Use `online.local_docs` when current online reads are unavailable because of a legacy CLI, permissions, or an offline workflow. It can inspect files already cached, downloaded, or opened on the current device:
 
 ```python
 from online.local_docs import read_path, search

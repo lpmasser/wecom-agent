@@ -1,11 +1,11 @@
 ---
 title: Online Sheets
-description: Create WeCom sheets, inspect sheet structure, add subsheets, append rows, and update ranges.
+description: Create, read, and update WeCom online sheets across supported CLI generations.
 ---
 
 # Online Sheets
 
-`online.sheets` wraps the WecomTeam document commands for standard online sheets. Structure reads are read-only; creation, deletion, row append, and range update operations require explicit confirmation.
+`online.sheets` translates standard-sheet operations across legacy CLI `0.1.x` and current CLI `1.1+`. Structure and cell-range reads are read-only; creation, deletion, row append, and range update operations require explicit confirmation.
 
 ## Create and inspect a sheet
 
@@ -16,7 +16,21 @@ created = create_sheet("Weekly Metrics", confirmed=True)
 info = get_info(docid="DOC_ID")
 ```
 
-`create_sheet()` uses document type `4`. `get_info()` reads sheet metadata and subsheet structure, not cell values.
+Legacy `create_sheet()` uses document type `4`; current releases use `sheet create`. `get_info()` reads sheet metadata and subsheet structure.
+
+## Read a cell range
+
+```python
+from online.sheets import get_range
+
+data = get_range(
+    docid="DOC_ID",
+    sheet_id="SHEET_ID",
+    cell_range="A1:D100",
+)
+```
+
+This requires CLI `1.1+` and calls `sheet ranges get`. Use `mode="csv"` for a CSV response; `cell_range` is required in the default structured mode.
 
 ## Add and remove a subsheet
 
@@ -73,7 +87,7 @@ values = [
 ]
 ```
 
-Already encoded dictionaries containing `data_type`, `cell_value`, or `cell_format` pass through unchanged.
+Already encoded dictionaries containing `data_type`, `cell_value`, or `cell_format` are preserved. Formula enums are normalized to legacy `FORMUAL` or current `FORMULA` as required by the detected CLI generation.
 
 ## Update a range
 
@@ -95,6 +109,4 @@ update_range(
 
 Rows are zero-indexed in the payload fields used by the wrapper. Confirm the starting coordinates and full matrix before writing.
 
-## Current read limitation
-
-The repository's tested `wecom-cli 0.1.9` does not expose `sheet_get_data`. `get_info()` can inspect document and subsheet metadata but cannot return current cell values.
+Legacy CLI `0.1.x` cannot return current cell values through this wrapper. CLI `1.1+` uses `get_range()` for online reads. See the [migration note](/wecom-cli-migration) for the command map.

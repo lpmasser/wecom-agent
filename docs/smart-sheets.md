@@ -5,7 +5,9 @@ description: Manage smart-sheet containers, fields, and records through confirme
 
 # Smart Sheets
 
-`online.smartsheets` covers the smart-sheet operations currently exposed by the WecomTeam CLI: create a document, inspect sheets and fields, manage schema, and add, update, or delete records.
+`online.smartsheets` routes operations across the legacy CLI `0.1.x` flat document commands and the current CLI `1.1+` nested `smartsheet` service.
+
+Run `python3 -m online.selfcheck` before using this module. The report shows the detected generation and read/write wrapper coverage.
 
 ## Create and inspect
 
@@ -17,7 +19,7 @@ sheets = get_sheets(docid="DOC_ID")
 fields = get_fields(docid="DOC_ID", sheet_id="SHEET_ID")
 ```
 
-`get_sheets()` and `get_fields()` are read-only. Creating a smart sheet uses document type `10`.
+`get_sheets()` and `get_fields()` are read-only. Legacy create uses document type `10`; current create uses `smartsheet create`.
 
 ## Manage child sheets
 
@@ -43,7 +45,7 @@ removed = delete_sheet(
 Field payloads are passed to the CLI without inventing a schema. Build them from the installed command's schema output:
 
 ```bash
-wecom-cli doc smartsheet_add_fields --schema
+wecom-cli smartsheet fields add --schema
 ```
 
 ```python
@@ -71,7 +73,22 @@ delete_fields(
 )
 ```
 
-## Manage records
+## Read and manage records
+
+Record reads require CLI `1.1+`:
+
+```python
+from online.smartsheets import get_records
+
+page = get_records(
+    docid="DOC_ID",
+    sheet_id="SHEET_ID",
+    limit=100,
+    key_type="field_title",
+)
+```
+
+Use the returned cursor for the next page. Legacy CLI `0.1.x` does not expose record reads and raises a compatibility error.
 
 ```python
 from online.smartsheets import add_records, delete_records, update_records
@@ -99,8 +116,4 @@ delete_records(
 )
 ```
 
-Set `auto_file=True` for add or update only when the installed CLI supports the corresponding `+smartsheet_*_auto_file` extension command.
-
-## Current read limitation
-
-The repository's tested `wecom-cli 0.1.9` does not expose `smartsheet_get_records`. The wrapper can inspect sheets and fields, but it cannot list current records before an update. Record mutations therefore require known record IDs and a separately verified payload.
+`auto_file=True` is only supported by the legacy `+smartsheet_*_auto_file` extension. Current CLI calls reject this flag instead of silently ignoring it.

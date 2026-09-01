@@ -2,7 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Agent Skill](https://img.shields.io/badge/Agent%20Skill-Codex-blue.svg)](SKILL.md)
-[![Python](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![CI](https://github.com/tzwkb/wecom-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/tzwkb/wecom-agent/actions/workflows/ci.yml)
 
 [Documentation](https://wecom-agent.readthedocs.io/en/latest/) | English | [中文](README_ZH.md)
 
@@ -35,20 +36,20 @@ $PY decrypt/macos/voice_transcribe.py
 
 ```bash
 npm install -g @wecom/cli
-wecom-cli init
-wecom-cli auth show --auth-status
+wecom-cli auth init
+wecom-cli auth show --status
 
 $PY -m online.selfcheck
 ```
 
 Implemented wrappers:
 
-- `online.docs`: create normal documents, overwrite Markdown content, create smart pages.
+- `online.docs`: create/read normal documents, overwrite Markdown content, and create/import smart pages; structured legacy smart-page payloads remain limited to CLI `0.1.x`.
 - `online.local_docs`: read locally cached/downloaded documents as a fallback when online content APIs are unavailable.
-- `online.sheets`: create online sheets, read sheet metadata, add/delete subsheets, append rows, update ranges.
-- `online.smartsheets`: create smart sheets, read sheets/fields, manage sheets/fields, add/update/delete records when record IDs are known.
+- `online.sheets`: create online sheets, read metadata and cell ranges, add/delete subsheets, append rows, and update ranges.
+- `online.smartsheets`: create smart sheets, manage child sheets/fields/records, and read records across legacy and current CLI generations.
 
-Current `wecom-cli 0.1.9` does not expose `get_doc_content`, `sheet_get_data`, or `smartsheet_get_records`; latest online content reads are therefore marked unsupported by `online.selfcheck`. Local cache fallback can only read files already downloaded or opened on this device.
+`wecom-cli 1.1+` introduced a breaking nested command model and added online document, sheet, smart-page, and smart-sheet services. The wrappers detect the installed generation and translate current payloads. Structured legacy smart-page `pages` remain fail-closed because they cannot be mapped losslessly; use Markdown import instead. See [the migration note](docs/wecom-cli-migration.md).
 
 ## MCP
 
@@ -56,7 +57,20 @@ Current `wecom-cli 0.1.9` does not expose `get_doc_content`, `sheet_get_data`, o
 bash setup.sh
 ```
 
-MCP keeps local tools (`wecom_contacts`, `wecom_search`, `wecom_openfile`, etc.), adds local document fallback tools (`wecom_local_doc_read_path`, `wecom_local_doc_search`), and adds online tools such as `wecom_doc_create`, `wecom_doc_write_markdown`, `wecom_sheet_append_row`, and `wecom_smartsheet_add_records`. Online write tools require `confirmed=True`.
+MCP keeps local tools (`wecom_contacts`, `wecom_search`, `wecom_openfile`, etc.), adds local document fallback tools (`wecom_local_doc_read_path`, `wecom_local_doc_search`), and exposes current online reads including `wecom_doc_read`, `wecom_sheet_get_range`, and `wecom_smartsheet_records`. Online write tools require `confirmed=True`.
+
+`setup.sh` creates an isolated `.venv` from the pinned [requirements](requirements.txt). Optional local document parsers are listed in [requirements-documents.txt](requirements-documents.txt).
+
+## Development
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q server.py online decrypt tests
+ruff check online server.py tests
+pip-audit -r requirements.txt
+npm ci && npm run docs:build -- --output /tmp/wecom-agent-docs --quiet
+```
 
 ## Structure
 

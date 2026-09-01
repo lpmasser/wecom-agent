@@ -35,16 +35,21 @@ Fallback results may be stale compared with the online document.
 | Tool | Operation | Confirmation |
 |---|---|---|
 | `wecom_doc_create` | Create a normal document | Required |
+| `wecom_doc_read` | Read the latest normal-document body on CLI `1.1+` | Not required |
 | `wecom_doc_write_markdown` | Replace normal document content with Markdown | Required |
-| `wecom_smartpage_create` | Create a smart page | Required |
+| `wecom_smartpage_create` | Create a smart page; current CLI requires empty `pages_json` | Required |
+| `wecom_smartpage_import` | Import a local Markdown file as a smart page on CLI `1.1+` | Required |
 | `wecom_sheet_create` | Create an online sheet | Required |
 | `wecom_sheet_info` | Read sheet structure | Not required |
+| `wecom_sheet_get_range` | Read a cell range on CLI `1.1+` | Not required |
 | `wecom_sheet_add_sub` | Add a subsheet | Required |
 | `wecom_sheet_delete_sub` | Delete a subsheet | Required |
 | `wecom_sheet_append_row` | Append one row | Required |
 | `wecom_sheet_update_range` | Update a rectangular cell range | Required |
 
 ## Smart sheets
+
+These MCP tools route to the legacy flat commands or the current nested `smartsheet` service according to the installed CLI generation.
 
 | Tool | Operation | Confirmation |
 |---|---|---|
@@ -54,6 +59,7 @@ Fallback results may be stale compared with the online document.
 | `wecom_smartsheet_update_sheet` | Rename a child sheet | Required |
 | `wecom_smartsheet_delete_sheet` | Delete a child sheet | Required |
 | `wecom_smartsheet_fields` | Read fields | Not required |
+| `wecom_smartsheet_records` | Read records on CLI `1.1+` | Not required |
 | `wecom_smartsheet_add_fields` | Add fields | Required |
 | `wecom_smartsheet_update_fields` | Update fields | Required |
 | `wecom_smartsheet_delete_fields` | Delete fields | Required |
@@ -71,7 +77,7 @@ Every online write tool accepts `confirmed`. The facade returns a confirmation r
 python3 server.py
 ```
 
-On macOS, `bash setup.sh` installs the repository's Python dependencies and registers the server when its supported client command is present. Direct module calls remain available for testing and automation.
+On macOS, `bash setup.sh` creates an isolated `.venv` from pinned dependencies and registers the server when its supported client command is present. Direct module calls remain available for testing and automation.
 
 ## JSON inputs
 

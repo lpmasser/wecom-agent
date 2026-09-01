@@ -9,7 +9,7 @@ Start with a read-only local command. Add online operations only after the local
 
 ## Requirements
 
-- Python 3 on macOS or Windows.
+- Python 3.10+ on macOS or Windows.
 - A running, signed-in WeCom desktop client for local data workflows.
 - `pycryptodome` for Windows decryption workflows.
 - Node.js and `@wecom/cli` only for online document and sheet operations.
@@ -19,8 +19,12 @@ Start with a read-only local command. Add online operations only after the local
 ```bash
 git clone https://github.com/tzwkb/wecom-agent.git
 cd wecom-agent
-python3 -m unittest discover -s tests
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m unittest discover -s tests
 ```
+
+On Windows, replace `.venv/bin/python` with `.venv\Scripts\python.exe`.
 
 ## Run a local read on macOS
 
@@ -45,12 +49,12 @@ Install and authenticate the official WecomTeam CLI:
 
 ```bash
 npm install -g @wecom/cli
-wecom-cli init
-wecom-cli auth show --auth-status
+wecom-cli auth init
+wecom-cli auth show --status
 python3 -m online.selfcheck
 ```
 
-The self-check reports both authentication state and command availability. An authenticated session does not guarantee that every API category is permitted by the current enterprise.
+The self-check reports the CLI generation, authentication state, service availability, and Python-wrapper coverage. CLI `1.1+` uses a breaking nested command model; see the [`wecom-cli` migration note](/wecom-cli-migration). An authenticated session does not guarantee that every API category is permitted by the current enterprise.
 
 ## Call a confirmed write
 
@@ -65,10 +69,11 @@ Without `confirmed=True`, the wrapper raises `PermissionError` before invoking `
 
 ## Optional MCP facade
 
-On macOS, `bash setup.sh` installs the Python dependencies used by the repository and registers the local MCP server when a supported client command is available. The underlying commands remain usable directly without MCP.
+On macOS, `bash setup.sh` creates an isolated `.venv` from the pinned dependency file and registers the local MCP server when a supported client command is available. The underlying commands remain usable directly without MCP.
 
 ```bash
-python3 server.py
+bash setup.sh
+.venv/bin/python server.py
 ```
 
 Use direct Python or CLI calls when you need the most transparent execution path.

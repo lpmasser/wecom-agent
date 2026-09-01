@@ -9,8 +9,8 @@ WeCom Agent combines local access to a user's own WeCom data with a thin operati
 
 <CardGroup cols={2}>
   <Card title="Local reading" icon="magnifying-glass" href="/local-reading">Search chats, inspect conversations, export media, and locate downloaded documents on the current device.</Card>
-  <Card title="Online documents" icon="document-text" href="/online-documents">Create and update supported WeCom documents through an authenticated WecomTeam CLI session.</Card>
-  <Card title="Sheets" icon="chart-bar" href="/online-sheets">Create sheets, inspect structure, append rows, and update cell ranges.</Card>
+  <Card title="Online documents" icon="document-text" href="/online-documents">Create, read, and update supported WeCom documents through an authenticated WecomTeam CLI session.</Card>
+  <Card title="Sheets" icon="chart-bar" href="/online-sheets">Create sheets, read cell ranges, append rows, and update values.</Card>
   <Card title="Safety model" icon="shield-check" href="/security">Keep reads local and require explicit confirmation for every online write.</Card>
 </CardGroup>
 
@@ -27,7 +27,7 @@ The legacy self-built application under `legacy/self-built-app/` is retained for
 
 The repository wraps document, online sheet, and smart sheet operations. The exact online surface still depends on the installed `wecom-cli` version and the permissions granted by the user's enterprise.
 
-With `wecom-cli 0.1.9`, online reads for normal document bodies, sheet cell data, and smart-sheet records are not exposed. Metadata, sheet lists, and field lists remain available. Locally cached or downloaded files can be read as a fallback, but they may not match the latest online revision.
+CLI `1.1+` introduced a breaking nested command model and added online reads for normal document bodies, sheet cells, and smart-sheet records. The repository translates current document, standard-sheet, smart-page, and smart-sheet operations. Structured legacy smart-page `pages` still fail closed because the new service only supports an empty create or Markdown import. See the [`wecom-cli` migration note](/wecom-cli-migration).
 
 ## Non-negotiable safety rule
 

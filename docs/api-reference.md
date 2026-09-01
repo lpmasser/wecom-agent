@@ -17,6 +17,14 @@ class WecomCliError(RuntimeError)
 
 Raised when a `wecom-cli` subprocess exits with a nonzero status. The instance retains `argv`, `returncode`, `stdout`, and `stderr`.
 
+### `WecomCliCompatibilityError`
+
+```python
+class WecomCliCompatibilityError(RuntimeError)
+```
+
+Raised before execution when a legacy wrapper payload cannot be translated safely to CLI `1.1+`.
+
 ### `run_json`
 
 ```python
@@ -49,6 +57,22 @@ target_payload(docid=None, url=None)
 
 Returns either `{"docid": ...}` or `{"url": ...}`. Exactly one argument must be present; otherwise the function raises `ValueError`.
 
+### `current_target_payload`
+
+```python
+current_target_payload(docid=None, url=None)
+```
+
+Returns a current-generation `{"docid": ...}` payload. A supported WeCom document URL is validated and converted to its document ID.
+
+### `cli_generation`
+
+```python
+cli_generation(value)
+```
+
+Parses a semantic version string and returns `legacy` for versions below `1.1.0` or `current` otherwise. Unparseable values raise `ValueError`.
+
 ### `doc_call`
 
 ```python
@@ -60,10 +84,10 @@ Dispatches `wecom-cli doc <command>` through `run_json` or an injected runner.
 ### `auth_status`
 
 ```python
-auth_status(runner=None)
+auth_status(runner=None, cli_version=None)
 ```
 
-Returns the output of `wecom-cli auth show --auth-status`.
+Uses legacy `--auth-status` or current `--status` according to the detected version.
 
 ### `version`
 
@@ -86,10 +110,24 @@ Checks a document command with `--schema`. Returns `False` when the command rais
 ### `create_document`
 
 ```python
-create_document(name, confirmed=False, runner=None)
+create_document(name, confirmed=False, runner=None, cli_version=None)
 ```
 
-Creates a normal document through `create_doc` with document type `3`.
+Creates a normal document through legacy `doc create_doc` or current `doc create`.
+
+### `read_document`
+
+```python
+read_document(
+    docid=None,
+    url=None,
+    content_type="markdown",
+    runner=None,
+    cli_version=None,
+)
+```
+
+Reads the latest normal-document body through current `doc contents get`. Legacy CLIs raise `WecomCliCompatibilityError` before execution.
 
 ### `write_document_markdown`
 
@@ -100,18 +138,27 @@ write_document_markdown(
     content="",
     confirmed=False,
     runner=None,
+    cli_version=None,
 )
 ```
 
-Replaces a normal document body with Markdown through `edit_doc_content` and `content_type: 1`.
+Replaces a normal document body through legacy `doc edit_doc_content` or current `doc contents overwrite`.
 
 ### `create_smartpage`
 
 ```python
-create_smartpage(title, pages, confirmed=False, auto_file=False, runner=None)
+create_smartpage(title, pages=None, confirmed=False, auto_file=False, runner=None, cli_version=None)
 ```
 
-Creates a smart page. `auto_file=True` selects the optional `+smartpage_create` CLI extension.
+Creates a smart page. On CLI `1.1+`, `pages` must be empty and the wrapper calls `smartpage create`; a non-empty legacy structure fails closed.
+
+### `import_smartpage_markdown`
+
+```python
+import_smartpage_markdown(title, file_path, confirmed=False, runner=None, cli_version=None)
+```
+
+Imports a local Markdown file through `smartpage import`. Requires CLI `1.1+`.
 
 ## Local document fallback
 
@@ -152,18 +199,34 @@ Returns roots from `WECOM_LOCAL_DOC_ROOTS` when configured. Otherwise it include
 ### `create_sheet`
 
 ```python
-create_sheet(name, confirmed=False, runner=None)
+create_sheet(name, confirmed=False, runner=None, cli_version=None)
 ```
 
-Creates an online sheet through `create_doc` with document type `4`.
+Creates an online sheet through legacy `doc create_doc` or current `sheet create`.
 
 ### `get_info`
 
 ```python
-get_info(docid=None, url=None, runner=None)
+get_info(docid=None, url=None, runner=None, cli_version=None)
 ```
 
-Reads standard sheet metadata and subsheet structure with `sheet_get_info`.
+Reads standard sheet metadata and subsheet structure with legacy `sheet_get_info` or current `sheet get`.
+
+### `get_range`
+
+```python
+get_range(
+    docid=None,
+    url=None,
+    sheet_id="",
+    cell_range="",
+    mode="default",
+    runner=None,
+    cli_version=None,
+)
+```
+
+Reads current online sheet cells through `sheet ranges get`. This requires CLI `1.1+`; `cell_range` is required for the default structured mode.
 
 ### `add_subsheet`
 
@@ -177,6 +240,7 @@ add_subsheet(
     index=None,
     confirmed=False,
     runner=None,
+    cli_version=None,
 )
 ```
 
@@ -185,7 +249,7 @@ Adds a child sheet with an explicit title and dimensions. The optional index con
 ### `delete_subsheet`
 
 ```python
-delete_subsheet(docid=None, url=None, sheet_id="", confirmed=False, runner=None)
+delete_subsheet(docid=None, url=None, sheet_id="", confirmed=False, runner=None, cli_version=None)
 ```
 
 Deletes the specified child sheet with `sheet_delete_sub`.
@@ -200,6 +264,7 @@ append_row(
     values=None,
     confirmed=False,
     runner=None,
+    cli_version=None,
 )
 ```
 
@@ -217,6 +282,7 @@ update_range(
     rows=None,
     confirmed=False,
     runner=None,
+    cli_version=None,
 )
 ```
 
@@ -225,7 +291,7 @@ Writes a two-dimensional matrix beginning at the supplied zero-based row and col
 ### `row_data`
 
 ```python
-row_data(values)
+row_data(values, generation="legacy")
 ```
 
 Returns an existing `{"values": ...}` row unchanged or converts a sequence into a WeCom row payload.
@@ -233,12 +299,14 @@ Returns an existing `{"values": ...}` row unchanged or converts a sequence into 
 ### `cell_data`
 
 ```python
-cell_data(value)
+cell_data(value, generation="legacy")
 ```
 
 Converts Python numbers, text, `None`, links, formulas, and explicitly typed dictionaries into WeCom cell payloads. Unsupported typed dictionaries raise `ValueError`.
 
 ## Smart sheets
+
+Every function in this section accepts an optional `cli_version`. The module detects the installed generation and routes to legacy flat document commands or the current nested `smartsheet` service.
 
 ### `create_smartsheet`
 
@@ -246,7 +314,7 @@ Converts Python numbers, text, `None`, links, formulas, and explicitly typed dic
 create_smartsheet(name, confirmed=False, runner=None)
 ```
 
-Creates a smart-sheet document through `create_doc` with document type `10`.
+Creates a smart-sheet document through legacy `create_doc` with document type `10` or current `smartsheet create`.
 
 ### `get_sheets`
 
@@ -254,7 +322,7 @@ Creates a smart-sheet document through `create_doc` with document type `10`.
 get_sheets(docid=None, url=None, runner=None)
 ```
 
-Returns child-sheet metadata through `smartsheet_get_sheet`.
+Returns child-sheet metadata through legacy `smartsheet_get_sheet` or current `smartsheet sheets list`.
 
 ### `add_sheet`
 
@@ -262,7 +330,7 @@ Returns child-sheet metadata through `smartsheet_get_sheet`.
 add_sheet(docid=None, url=None, title=None, confirmed=False, runner=None)
 ```
 
-Adds a child sheet. When a title is supplied, it is sent inside `properties`.
+Adds a child sheet. Current CLI requires a non-empty title.
 
 ### `update_sheet`
 
@@ -277,7 +345,7 @@ update_sheet(
 )
 ```
 
-Renames a child sheet by sending its ID and new title in `properties`.
+Renames a child sheet by translating the ID and title to the installed generation's payload.
 
 ### `delete_sheet`
 
@@ -293,7 +361,7 @@ Deletes a smart-sheet child sheet.
 get_fields(docid=None, url=None, sheet_id="", runner=None)
 ```
 
-Returns field metadata for a child sheet through `smartsheet_get_fields`.
+Returns field metadata through legacy `smartsheet_get_fields` or current `smartsheet fields list`.
 
 ### `add_fields`
 
@@ -354,7 +422,7 @@ add_records(
 )
 ```
 
-Adds records. `auto_file=True` selects `+smartsheet_add_records_auto_file` when that CLI extension is installed.
+Adds records. `auto_file=True` selects the legacy extension and is rejected on current CLI releases.
 
 ### `update_records`
 
@@ -371,7 +439,7 @@ update_records(
 )
 ```
 
-Updates known records and optionally sends `key_type`. `auto_file=True` selects the corresponding extension command.
+Updates known records and optionally sends `key_type`. Short legacy values `FIELD_TITLE` and `FIELD_ID` are normalized for current CLI releases. `auto_file=True` remains legacy-only.
 
 ### `delete_records`
 
@@ -387,6 +455,29 @@ delete_records(
 ```
 
 Deletes the listed known record IDs.
+
+### `get_records`
+
+```python
+get_records(
+    docid=None,
+    url=None,
+    sheet_id="",
+    limit=100,
+    cursor=None,
+    start=None,
+    key_type=None,
+    field_ids=None,
+    field_titles=None,
+    view_id=None,
+    filter_spec=None,
+    sort=None,
+    runner=None,
+    cli_version=None,
+)
+```
+
+Reads one page of smart-sheet records through CLI `1.1+`. Legacy CLI releases raise `WecomCliCompatibilityError` before execution.
 
 ## Local file utilities
 

@@ -52,7 +52,12 @@ export default defineConfig({
             },
             {
               group: "Reference",
-              pages: ["security", "api-reference", "troubleshooting"],
+              pages: [
+                "security",
+                "wecom-cli-migration",
+                "api-reference",
+                "troubleshooting",
+              ],
             },
           ],
         }),

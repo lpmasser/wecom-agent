@@ -5,7 +5,6 @@ from pathlib import Path
 
 from decrypt import read_doc
 
-
 DOC_EXTS = read_doc.TEXT_EXT | {"pdf", "xlsx", "xlsm", "xls", "docx"} | read_doc.IMAGE_EXT
 DEFAULT_LIMIT = 8000
 
@@ -82,9 +81,11 @@ def default_roots():
     try:
         from decrypt.macos import wecom_paths
 
-        roots.append(Path(wecom_paths.caches()) / "Files")
-    except BaseException:
-        pass
+        wecom_cache = Path(wecom_paths.caches()) / "Files"
+    except (OSError, SystemExit):
+        wecom_cache = None
+    if wecom_cache is not None:
+        roots.append(wecom_cache)
 
     home = Path.home()
     roots.extend([home / "Downloads", home / "Documents", home / "Desktop"])

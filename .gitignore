@@ -18,6 +18,13 @@ decrypt/**/validate.dylib
 jobs/
 .token_cache.json
 .venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
 decrypt/legacy/
 
 # Generated documentation and local run receipts
