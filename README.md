@@ -7,7 +7,7 @@
 
 [Documentation](https://wecom-agent.readthedocs.io/en/latest/) | English | [中文](README_ZH.md)
 
-WeCom local-decrypt reading plus WecomTeam CLI/Bot operation layer for local chat search, media/file discovery, todos, and online documents/sheets.
+Agent Skill — WeCom local-decrypt reading plus WecomTeam CLI/Bot operations for chat search, media/file discovery, todos, and online documents/sheets.
 
 ## Capabilities
 
