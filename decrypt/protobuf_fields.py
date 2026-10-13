@@ -31,7 +31,7 @@ def ordered_fields(blob):
             value, offset = _varint(data, offset)
         elif wire in (1, 5):
             end = offset + (8 if wire == 1 else 4)
-            value = data[offset:end]
+            value = int.from_bytes(data[offset:end], "little")
             offset = end
         elif wire == 2:
             length, offset = _varint(data, offset)

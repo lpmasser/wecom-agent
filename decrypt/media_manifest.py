@@ -56,7 +56,10 @@ def resource(row):
 
 
 def _fingerprint(path):
-    info = path.stat()
+    return _stat_signature(path.stat())
+
+
+def _stat_signature(info):
     return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
 
 
@@ -126,6 +129,9 @@ def copy_cached(source, cache_root, destination_root, *, image=False):
     relative = source.relative_to(cache_root)
     before = _fingerprint(source)
     with source.open("rb") as stream:
+        # Compare stat with stat and fstat with fstat. Windows exposes different
+        # timestamp precision through the two APIs for the same unchanged file.
+        opened = _stat_signature(os.fstat(stream.fileno()))
         header = stream.read(16)
         suffix = image_suffix(header) if image else ""
         if image and not suffix:
@@ -143,7 +149,7 @@ def copy_cached(source, cache_root, destination_root, *, image=False):
             stream.seek(0)
             shutil.copyfileobj(stream, output)
             after = os.fstat(stream.fileno())
-            if before != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            if opened != _stat_signature(after):
                 raise OSError("cache file changed during copy")
             if before != _fingerprint(source):
                 raise OSError("cache file replaced during copy")

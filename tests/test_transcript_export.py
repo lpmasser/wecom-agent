@@ -221,6 +221,19 @@ class TranscriptExportTests(unittest.TestCase):
             copy_cached(source, self.cache, destination, image=True)
         self.assertEqual((destination / relative).read_bytes(), PNG)
 
+    def test_stat_and_fstat_precision_difference_does_not_reject_stable_file(self):
+        import decrypt.media_manifest as media
+        source = self.add_media(10)
+        original = media._fingerprint
+
+        def lower_precision(path):
+            dev, ino, size, mtime, ctime = original(path)
+            return dev, ino, size, mtime - mtime % 1000000000, ctime - ctime % 1000000000
+
+        with patch.object(media, "_fingerprint", side_effect=lower_precision):
+            relative = copy_cached(source, self.cache, self.out / "assets", image=True)
+        self.assertEqual((self.out / "assets" / relative).read_bytes(), PNG)
+
     def test_bulk_media_preserves_nested_paths_and_excludes_its_own_output(self):
         self.add_media(10, 15, name="report.txt", body=b"one")
         self.add_media(11, 15, name="report.txt", body=b"two")

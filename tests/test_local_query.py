@@ -59,6 +59,9 @@ class LocalQueryTests(unittest.TestCase):
         self.assertEqual(self.store.conversation_page(2, 20)["next_offset"], None)
         self.assertEqual(len(self.store.conversation_page()["conversations"]), 3)
 
+    def test_numeric_protobuf_fields_are_not_mistaken_for_message_text(self):
+        self.assertEqual(ex.decode_text(pb((1, "正文")) + b"\x15FAKE" + b"\x19NUMERIC!"), "正文")
+
     def test_search_pagination_reports_total_and_keeps_only_requested_page(self):
         result = self.store.search("消息", limit=1, offset=1)
         self.assertEqual((result["count"], result["total"], result["next_offset"]), (1, 2, None))
