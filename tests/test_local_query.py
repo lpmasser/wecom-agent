@@ -102,16 +102,16 @@ class LocalQueryTests(unittest.TestCase):
             self.assertEqual(store.conversation_page()["total"], 3)
 
     def test_macos_cli_can_use_relocated_offline_database_without_live_profile(self):
-        env = {**os.environ, "WECOM_DECRYPTED_DIR": str(self.root / "dec"), "WECOM_PROFILE": str(self.root / "missing-profile")}
+        env = {**os.environ, "PYTHONUTF8": "0", "WECOM_DECRYPTED_DIR": str(self.root / "dec"), "WECOM_PROFILE": str(self.root / "missing-profile")}
         target = self.root / "dec" / "Messages1"
         target.mkdir(parents=True)
         (target / "Info.db").write_bytes(self.path.read_bytes())
         script = Path(__file__).parents[1] / "decrypt/macos/wecom_local.py"
         result = subprocess.run([sys.executable, str(script), "search", "尾部关键字", "--json", "--limit", "1"],
-                                env=env, capture_output=True, text=True, check=False)
+                                env=env, capture_output=True, text=True, encoding="utf-8", check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["messages"][0]["content"], self.long)
-        result = subprocess.run([sys.executable, str(script), "search", "尾部关键字"], env=env, capture_output=True, text=True, check=False)
+        result = subprocess.run([sys.executable, str(script), "search", "尾部关键字"], env=env, capture_output=True, text=True, encoding="utf-8", check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(self.long, result.stdout)
 
@@ -125,7 +125,7 @@ class LocalQueryTests(unittest.TestCase):
 
     def test_mcp_uses_structured_full_text_results(self):
         import server
-        local = SimpleNamespace(CMDS={"search": lambda args, js=False: self.store.search(args[0], limit=1)})
+        local = SimpleNamespace(CMDS={"search": lambda args, js=False: self.store.search(args[-1], limit=1)})
         with patch.object(server, "_PLAT", "macos"), patch.object(server, "_local_module", return_value=local):
             self.assertEqual(json.loads(server.wecom_search("尾部关键字"))["messages"][0]["content"], self.long)
 

@@ -3,8 +3,16 @@
 import contextlib
 import os
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
+
+
+def configure_stdio():
+    """Chinese transcripts and JSON use UTF-8 even through Windows pipes."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
 
 
 def connect_readonly(path, *, immutable=False):

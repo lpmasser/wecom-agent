@@ -67,7 +67,9 @@ class PlatformTests(unittest.TestCase):
         import server
         with patch.object(win, "decrypt_db", side_effect=self.decrypt), patch.object(server, "_PLAT", "windows"), patch.object(server, "_local_module", return_value=win), patch.object(server, "_win_key", return_value=b"key"):
             result = json.loads(server.wecom_search("尾部关键字"))
+            literal = json.loads(server.wecom_search("--limit"))
         self.assertEqual(result["messages"][0]["content"], self.long)
+        self.assertEqual(literal["keyword"], "--limit")
 
     def test_windows_decryption_includes_real_wal_through_shared_read(self):
         with contextlib.closing(sqlite3.connect(self.path)) as conn, conn:
@@ -81,7 +83,7 @@ class PlatformTests(unittest.TestCase):
     def test_bulk_exports_stream_complete_json_csv_with_stable_ids(self):
         with contextlib.closing(connect_readonly(self.path)) as conn:
             result = export_all(MessageStore(conn, platform="windows"), self.root / "bulk")
-        rows = json.loads((self.root / "bulk/messages.json").read_text())
+        rows = json.loads((self.root / "bulk/messages.json").read_text(encoding="utf-8"))
         self.assertEqual(result["messages"], 6)
         self.assertEqual(next(r["content"] for r in rows if r["local_id"] == 1), self.long)
         self.assertNotIn("_raw", str(rows))
@@ -132,5 +134,5 @@ class PlatformTests(unittest.TestCase):
         with patch.object(sys, "argv", ["monitor.py", "--poll", "0.01"]), patch.object(monitor, "load_messages_key", return_value=b"key"), patch.object(monitor, "decrypt_fresh", return_value=str(mac_path)) as refresh, patch.object(monitor.time, "sleep", side_effect=after_tick), contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(RuntimeError, "test stop"):
             monitor.main()
         self.assertEqual(refresh.call_count, 2)
-        messages = [json.loads(line) for line in Path(monitor.OUTLOG).read_text().splitlines()]
+        messages = [json.loads(line) for line in Path(monitor.OUTLOG).read_text(encoding="utf-8").splitlines()]
         self.assertEqual([m["lid"] for m in messages], [1, 2, 3, 4, 5, 6])

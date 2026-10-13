@@ -135,10 +135,10 @@ def wecom_search(keyword: str, days: int | None = None, limit: int = 50, offset:
             raise ValueError("keyword 不能为空")
     except ValueError as e:
         return _render({"error": str(e)})
-    args = [keyword, "--limit", str(limit), "--offset", str(offset)]
+    args = ["--limit", str(limit), "--offset", str(offset)]
     if days is not None:
         args += ["--days", str(days)]
-    return _call("search", args)
+    return _call("search", args + ["--", keyword])
 
 
 @mcp.tool()
@@ -150,10 +150,10 @@ def wecom_read_chat(conversation: str, days: int | None = None, limit: int = 50,
             raise ValueError("conversation 不能为空")
     except ValueError as e:
         return _render({"error": str(e)})
-    args = [conversation, "--limit", str(limit), "--offset", str(offset)]
+    args = ["--limit", str(limit), "--offset", str(offset)]
     if days is not None:
         args += ["--days", str(days)]
-    return _call("chat", args)
+    return _call("chat", args + ["--", conversation])
 
 
 @mcp.tool()
@@ -165,12 +165,12 @@ def wecom_export_chat(conversation: str, out: str, days: int | None = None, with
             raise ValueError("conversation 和 out 不能为空")
     except ValueError as e:
         return _render({"error": str(e)})
-    args = [conversation, "--out", out]
+    args = ["--out=" + out]
     if days is not None:
         args += ["--days", str(days)]
     if with_media:
         args += ["--with-media"]
-    return _call("export", args)
+    return _call("export", args + ["--", conversation])
 
 
 @mcp.tool()
@@ -200,7 +200,7 @@ def wecom_media() -> str:
 @mcp.tool()
 def wecom_openfile(keyword: str) -> str:
     """聊天里找文档→定位本体→文本解析(txt/csv/md/xlsx/docx/文本PDF)。图片型/扫描PDF 返回 🖼️VISUAL 路径,用 Read 多模态看。"""
-    return _call("openfile", [keyword])
+    return _call("openfile", ["--", keyword])
 
 
 @mcp.tool()

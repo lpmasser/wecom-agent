@@ -16,10 +16,10 @@ import sys
 from datetime import datetime
 
 try:
-    from .local_io import connect_readonly, quote_identifier
+    from .local_io import connect_readonly, quote_identifier, configure_stdio
     from .protobuf_fields import fields, ordered_fields, single_text
 except ImportError:
-    from local_io import connect_readonly, quote_identifier
+    from local_io import connect_readonly, quote_identifier, configure_stdio
     from protobuf_fields import fields, ordered_fields, single_text
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -344,6 +344,7 @@ def fmt_time(ts):
 
 
 def main():
+    configure_stdio()
     import argparse
     try:
         from .local_query import MessageStore, validate_window

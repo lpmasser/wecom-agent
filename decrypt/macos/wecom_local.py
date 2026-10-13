@@ -25,7 +25,7 @@ sys.path[:0] = [_H, os.path.dirname(_H)]
 import export_wxwork as ex
 from media_export import export_cache
 from local_files import open_files, print_files
-from local_io import connect_readonly
+from local_io import connect_readonly, configure_stdio
 from local_query import MessageStore, parse_window, print_messages
 from transcript_export import export_chat
 
@@ -252,6 +252,7 @@ CMDS = {"contacts": cmd_contacts, "conversations": cmd_conversations, "members":
 
 
 def main():
+    configure_stdio()
     if len(sys.argv) < 2 or sys.argv[1] not in CMDS:
         print(__doc__)
         print("子命令:", ", ".join(CMDS))

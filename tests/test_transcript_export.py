@@ -43,7 +43,7 @@ class TranscriptExportTests(unittest.TestCase):
             return export_chat(store, self.path, "101", self.out / name, cache_root=self.cache, **kwargs)
 
     def manifest(self, result):
-        return json.loads(Path(result["manifest"]).read_text())
+        return json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
 
     def test_html_links_only_selected_conversation_media_and_escapes_messages(self):
         self.add_media(10)
@@ -57,7 +57,7 @@ class TranscriptExportTests(unittest.TestCase):
         self.assertEqual(entry["message"]["conversation_id"], "101")
         image = self.out / entry["files"][0]
         self.assertEqual(image.read_bytes(), PNG)
-        content = Path(result["out"]).read_text()
+        content = Path(result["out"]).read_text(encoding="utf-8")
         self.assertIn("<img ", content)
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", content)
         self.assertNotIn("<script>", content)
@@ -70,7 +70,7 @@ class TranscriptExportTests(unittest.TestCase):
         for suffix in ("txt", "md", "html", "json", "csv"):
             with self.subTest(format=suffix):
                 result = self.export("chat." + suffix, with_media=True)
-                text = Path(result["out"]).read_text()
+                text = Path(result["out"]).read_text(encoding="utf-8")
                 self.assertIn("完整正文" * 600, text)
                 self.assertIn("尾部关键字", text)
                 self.assertNotIn("_raw", text)
@@ -139,7 +139,7 @@ class TranscriptExportTests(unittest.TestCase):
         self.add_media(10, 29, name="emotion.gif", body=b"GIF89a" + b"synthetic")
         result = self.export(with_media=True)
         self.assertEqual(self.manifest(result)["entries"][0]["status"], "resolved")
-        self.assertNotIn("private-cdn", Path(result["out"]).read_text())
+        self.assertNotIn("private-cdn", Path(result["out"]).read_text(encoding="utf-8"))
 
     def test_no_media_flag_creates_no_assets_or_manifest(self):
         self.add_media(10)
@@ -196,6 +196,21 @@ class TranscriptExportTests(unittest.TestCase):
         with patch.object(media.shutil, "copyfileobj", side_effect=changing), self.assertRaises(OSError):
             copy_cached(source, self.cache, self.out / "assets", image=True)
         self.assertFalse(any(p.is_file() for p in self.out.rglob("*")))
+
+    def test_stable_image_voice_and_document_copy_succeed(self):
+        for lid, ct, name, body in [(10, 14, "img.png", PNG), (11, 16, "voice.silk", b"#!SILK_V3synthetic"),
+                                    (12, 15, "report.txt", b"synthetic document")]:
+            with self.subTest(kind=ct):
+                source = self.add_media(lid, ct, name=name, body=body)
+                before = source.stat()
+                try:
+                    copied = copy_cached(source, self.cache, self.out / "assets", image=ct == 14)
+                except OSError as error:
+                    after = source.stat()
+                    with source.open("rb") as stream:
+                        handle = os.fstat(stream.fileno())
+                    self.fail(f"{error}; path before={before}; path after={after}; file handle={handle}")
+                self.assertEqual((self.out / "assets" / copied).read_bytes(), body)
 
     def test_changed_shared_resource_never_overwrites_an_already_exported_asset(self):
         source = self.add_media(10)
