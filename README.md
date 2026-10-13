@@ -27,10 +27,17 @@ $PY decrypt/macos/read_wecom.py
 $PY decrypt/macos/wecom_local.py stats
 $PY decrypt/macos/wecom_local.py contacts <name>
 $PY decrypt/macos/wecom_local.py search <query>
-$PY decrypt/macos/wecom_local.py conversations|members <conversation>|todo|calendar|media
+$PY decrypt/macos/wecom_local.py conversations --limit 100 --offset 0 --json
+$PY decrypt/macos/wecom_local.py chat <conversation-id> --days 7 --limit 50 --json
+$PY decrypt/macos/wecom_local.py export <conversation-id> --out decrypt/macos/export/chat.html --with-media
+$PY decrypt/macos/wecom_local.py members <conversation-id>
 $PY decrypt/macos/monitor.py --poll 30
 $PY decrypt/macos/voice_transcribe.py
 ```
+
+Local queries preserve full text and line breaks. MCP conversation/message queries are paginated; duplicate conversation names require an explicit ID. Exports support TXT, Markdown, HTML, JSON and CSV. `--with-media` links native WeCom resource IDs to cached images, files, voice and emotions, with a per-message JSON manifest and a fresh asset directory. Missing, encrypted, ambiguous and unknown media stay explicit. See [local reading and exports](docs/local-reading.md).
+
+Select multiple accounts explicitly with `WECOM_PROFILE` (macOS) or `WECOM_DATA_DIR` (Windows). Relocated decrypted databases and media caches use `WECOM_DECRYPTED_DIR` and `WECOM_CACHE_DIR`.
 
 ## Online Documents And Sheets
 

@@ -13,6 +13,6 @@ if (-not $m.Success) {
     exit 1
 }
 $key = $m.Groups[1].Value
-Write-Host "[2/2] key=$key → wecom_win $($Rest -join ' ')" -ForegroundColor Cyan
+Write-Host "[2/2] 已取得有效 key → wecom_win $($Rest -join ' ')" -ForegroundColor Cyan
 $env:PYTHONUTF8 = "1"
 python -X utf8 "$here\wecom_win.py" $key @Rest

@@ -41,6 +41,9 @@ python3 decrypt/macos/wecom_local.py todo
 python3 decrypt/macos/wecom_local.py calendar
 python3 decrypt/macos/wecom_local.py media
 python3 decrypt/macos/wecom_local.py openfile <name-or-keyword>
+python3 decrypt/macos/wecom_local.py conversations --limit 100 --offset 0 --json
+python3 decrypt/macos/wecom_local.py chat <conversation-id> --days 7 --limit 50 --json
+python3 decrypt/macos/wecom_local.py export <conversation-id> --out decrypt/macos/export/chat.html --with-media
 ```
 
 | Command | Result |
@@ -53,6 +56,59 @@ python3 decrypt/macos/wecom_local.py openfile <name-or-keyword>
 | `todo` / `calendar` | Locally available todo and calendar records |
 | `media` | Copies readable cached images and files into an export directory |
 | `openfile` | Locates a chat file and extracts text when the format is supported |
+| `chat` | Reads one uniquely identified conversation, newest first, with full message bodies |
+| `export` | Writes a scoped TXT, Markdown, HTML, JSON or CSV transcript, optionally with local media |
+
+## Pagination and identity
+
+`conversations`, `search`, and `chat` accept `--limit 1..2000 --offset N --json`. Results include `count`, `total`, `offset`, `limit`, and `next_offset`; the final page has a null `next_offset`. CLI conversations/search retain their unlimited behavior when `--limit` is omitted. MCP defaults to 100 conversations or 50 messages. Queries stream database rows and retain only the selected search page. Search order is chronological; chat order is newest first, with the local message ID breaking timestamp ties.
+
+`--days` must be a positive integer; omitting it includes all dates. Text bodies, repeated protobuf text fields, whitespace and line breaks are preserved. Searches cover the full decoded body, including its tail. Message results include database table, conversation ID, local ID and server ID. Use conversation IDs when names are duplicated: ambiguous names return candidates before reading, exporting or listing members.
+
+## Conversation exports with media
+
+```bash
+python3 decrypt/macos/wecom_local.py export <conversation-id> --days 30 --out decrypt/macos/export/chat.md --with-media
+python3 decrypt/macos/wecom_local.py export <conversation-id> --out decrypt/macos/export/chat.html --with-media
+# Equivalent shared macOS exporter; legacy --db/--out-directory bulk JSON/CSV still works:
+python3 decrypt/export_wxwork.py --db /path/to/Info.db --conversation <id> --out export/chat.html --with-media --cache-dir /path/to/Caches
+```
+
+The output extension selects the format (`.md`, `.html`/`.htm`, `.json`, `.csv`, otherwise TXT); `--format` can override it. `--with-media` adds a `<stem>.media.json` sidecar and a fresh `<stem>.assets-<export-id>/` directory when readable files exist. Move the transcript, sidecar and the exact directory named in `assets_directory` together. Earlier export directories remain available; a new date range never inherits the previous export's files. JSON/CSV rows can be joined to the sidecar by table, conversation ID and local message ID.
+
+Each media entry records its database snapshot identity, message identity, kind, relative file paths, status and reason. It contains no raw message blob, remote URL, decryption key or absolute cache path. HTML escapes message text and displays readable images locally; Markdown embeds local images; TXT includes relative attachment paths. Files and voice are linked for local opening, without automatic playback or transcription. Files are copied with private permissions and atomic replacement; changing sources, traversal and cache symlinks are rejected.
+
+The adapter uses these observed native payload profiles:
+
+| Type | Payload | Local cache relation |
+|---|---|---|
+| 14, image | protobuf field 10 resource ID; field 2 optional original name | `Images/<month>/<resource-id>/<name>`; original preferred over thumbnail variants |
+| 15, file | field 10 resource ID and field 2 original name | `Files/<month>/<resource-id>/<name>`; both ID and name must match |
+| 16, voice | field 10 resource ID | `Voices` registered ID directory or filename |
+| 29, emotion | field 6 resource ID | `Emotions` registered ID directory or filename |
+
+Windows uses singular cache names (`Image`, `File`, `Voice`, `Emotion`) with the shared payload parser. Resource IDs are **not assumed to be content checksums**. Multiple distinct files matching the same resource are reported as `ambiguous`; byte-identical cached copies may share a resolution. Plain JPEG/PNG/GIF/WebP are detected by signature, including `.dat` names. An unreadable image is `encrypted_unsupported`; missing local files are `not_found`; malformed or unknown payloads are `unsupported`. Nested media inside forwarded/compound cards are not guessed from arbitrary strings. This implementation does not fetch remote files or add an encrypted-image decoder.
+
+The corrected macOS type labels (14=image, 16=voice) and native cache relations were checked on WeCom 5.0.12. A temporary local smoke run decrypted Info.db/Session.db, including the live Session WAL, and checked 60 media messages: 33 resolved, 27 not cached. Only aggregate counts were recorded, and temporary private outputs were removed. Windows adapters and Win32 shared WAL reading are covered by synthetic fixtures in CI; no current native Windows account was used for this change.
+
+## Relocated data and multiple accounts
+
+| Variable | Purpose |
+|---|---|
+| `WECOM_PROFILE` | macOS profile directory or its name under the default Profiles root |
+| `WECOM_DATA_DIR` | Windows directory containing `message.db` |
+| `WECOM_DECRYPTED_DIR` | Relocated decrypted root (macOS includes `Messages1/`; Windows contains `message.db`) |
+| `WECOM_CACHE_DIR` | Explicit cache root containing the platform's media subdirectories |
+
+Multiple native accounts require an explicit selection. Invalid overrides fail instead of silently selecting another account. Offline macOS queries can read the configured decrypted root without a running client or an available native profile; media resolution additionally needs its corresponding cache root.
+
+## Database snapshots and incremental reads
+
+Both platform decryptors read a stable main/WAL pair, validate WAL checksums, salts and commit boundaries, and apply only committed frames before decrypting native wxSQLite3 pages. Partial ciphertext pages are rejected rather than padded. SQLite integrity checks cover ordinary tables; custom ICU FTS virtual tables and their shadows are excluded because the desktop tokenizer is unavailable in standard Python. Any key, snapshot or structural integrity failure preserves the previous decrypted output. Plain SQLite inputs use the same snapshot path. Local queries open databases in read-only mode.
+
+WeCom's wxSQLite3 AES-128 format has no page HMAC. WAL and b-tree checks detect transport/structural failures but do **not** authenticate arbitrary message contents. SQLCipher HMAC changes from wechat-decrypt are therefore not copied into this format.
+
+The macOS monitor watches main-file and WAL changes, persists a profile-scoped local LID cursor only after output succeeds, and includes messages inserted later with the same or an earlier send time. This assumes native monotonically assigned LIDs; use `--all` after restoring or rebuilding a database. A legacy timestamp-only state replays its final timestamp boundary once when migrating. Windows monitoring retains its existing timestamp behavior; the new bounded queries and conversation exports are shared on both platforms.
 
 ## Windows workflow
 

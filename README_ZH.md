@@ -29,10 +29,17 @@ $PY decrypt/macos/read_wecom.py
 $PY decrypt/macos/wecom_local.py stats
 $PY decrypt/macos/wecom_local.py contacts 张
 $PY decrypt/macos/wecom_local.py search 报价
-$PY decrypt/macos/wecom_local.py conversations|members <会话>|todo|calendar|media
+$PY decrypt/macos/wecom_local.py conversations --limit 100 --offset 0 --json
+$PY decrypt/macos/wecom_local.py chat <会话ID> --days 7 --limit 50 --json
+$PY decrypt/macos/wecom_local.py export <会话ID> --out decrypt/macos/export/chat.html --with-media
+$PY decrypt/macos/wecom_local.py members <会话ID>
 $PY decrypt/macos/monitor.py --poll 30
 $PY decrypt/macos/voice_transcribe.py
 ```
+
+查询保留完整正文和换行；MCP 会话与消息查询支持分页。会话名称重名时会列出候选 ID，不会合并多个群。导出支持 TXT、Markdown、HTML、JSON、CSV；`--with-media` 按消息资源标识定位本地图片、文件、语音和表情，生成逐消息清单及独立媒体目录。缺失、加密、同标识不同内容和未知格式均明确标注，详见 [本地读取与导出](docs/local-reading.md)。
+
+多账号请明确设置 macOS `WECOM_PROFILE` 或 Windows `WECOM_DATA_DIR`；移动后的解密库与缓存可分别通过 `WECOM_DECRYPTED_DIR`、`WECOM_CACHE_DIR` 指定。
 
 ## 在线文档和表格
 
@@ -59,7 +66,7 @@ $PY -m online.selfcheck
 bash setup.sh
 ```
 
-MCP 保留本地读取工具：`wecom_contacts/conversations/members/search/stats/todo/calendar/media/openfile`，并提供 `wecom_local_doc_read_path`、`wecom_local_doc_search` 读取本地缓存/下载文档。
+MCP 保留本地读取工具：`wecom_contacts/conversations/members/search/stats/todo/calendar/media/openfile`，新增 `wecom_read_chat`、`wecom_export_chat`，并提供 `wecom_local_doc_read_path`、`wecom_local_doc_search` 读取本地缓存/下载文档。
 
 在线读取工具包括 `wecom_doc_read`、`wecom_sheet_get_range` 与 `wecom_smartsheet_records`；创建、导入、覆写、追加、更新等线上写操作仍必须传 `confirmed=True`。
 

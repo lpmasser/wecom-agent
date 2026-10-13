@@ -17,7 +17,7 @@ from wxwork_crypto import PAGE_SZ, load_valid_keys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
-from wecom_paths import info_db
+from wecom_paths import info_db, decrypted
 INFO = info_db()
 KEYS = os.path.join(HERE, "wxwork_keys.json")
 
@@ -46,7 +46,7 @@ def main():
             sys.exit("扫描后仍无可用 key，检查企微是否登录")
     run("decrypt_wxwork.py")
     if subprocess.run([PY, os.path.join(os.path.dirname(HERE), "export_wxwork.py"),
-                       "--db", os.path.join(HERE, "decrypted", "Messages1", "Info.db"),
+                       "--db", decrypted("Messages1", "Info.db"),
                        "--out", os.path.join(HERE, "export")]).returncode != 0:
         sys.exit("export_wxwork 失败")
     print("\n✅ 完成。导出在 decrypt/macos/export/messages.csv|json；日常增量用 monitor.py")
