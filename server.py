@@ -15,6 +15,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
+from decrypt.local_query import validate_window
 from online import docs as online_docs
 from online import local_docs as online_local_docs
 from online import sheets as online_sheets
@@ -49,9 +50,13 @@ def _call(cmd, args):
         local = _local_module()
         with contextlib.redirect_stdout(buf):
             if _PLAT == "windows":
-                local.CMDS[cmd](_win_key(), args)
+                result = local.CMDS[cmd](_win_key(), args, js=True)
             else:
-                local.CMDS[cmd](args)
+                result = local.CMDS[cmd](args, js=True)
+            if result is not None:
+                return _render(result)
+    except ValueError as e:
+        return _render({"error": str(e)})
     except sqlite3.OperationalError as e:
         if "no such table" in str(e):
             return "解密 OK,但核心表缺失 → 数据未同步(可能新登录)。先打开企业微信浏览消息,等同步后重试。"
@@ -106,21 +111,66 @@ def wecom_contacts(keyword: str = "") -> str:
 
 
 @mcp.tool()
-def wecom_conversations() -> str:
-    """会话列表(名称/消息数/最后时间)。"""
-    return _call("conversations", [])
+def wecom_conversations(limit: int = 100, offset: int = 0) -> str:
+    """分页会话列表，含稳定会话 ID、total/next_offset。limit=1..2000。"""
+    try:
+        validate_window(limit, offset)
+    except ValueError as e:
+        return _render({"error": str(e)})
+    return _call("conversations", ["--limit", str(limit), "--offset", str(offset)])
 
 
 @mcp.tool()
 def wecom_members(conversation: str) -> str:
-    """某会话的参与者(按发言数)。conversation=会话名或 ID(模糊匹配)。"""
+    """某会话的参与者。优先使用会话 ID；重名会返回候选，不合并群成员。"""
     return _call("members", [conversation])
 
 
 @mcp.tool()
-def wecom_search(keyword: str) -> str:
-    """全文搜索消息(时间/会话/发送者/正文)。"""
-    return _call("search", [keyword])
+def wecom_search(keyword: str, days: int | None = None, limit: int = 50, offset: int = 0) -> str:
+    """分页全文搜索，保留完整正文和换行。days 为正整数，不传则搜索全部日期。"""
+    try:
+        validate_window(limit, offset, days)
+        if not keyword.strip():
+            raise ValueError("keyword 不能为空")
+    except ValueError as e:
+        return _render({"error": str(e)})
+    args = ["--limit", str(limit), "--offset", str(offset)]
+    if days is not None:
+        args += ["--days", str(days)]
+    return _call("search", args + ["--", keyword])
+
+
+@mcp.tool()
+def wecom_read_chat(conversation: str, days: int | None = None, limit: int = 50, offset: int = 0) -> str:
+    """按会话 ID 或唯一名称读取完整消息，最新在前。重名时返回候选。"""
+    try:
+        validate_window(limit, offset, days)
+        if not conversation.strip():
+            raise ValueError("conversation 不能为空")
+    except ValueError as e:
+        return _render({"error": str(e)})
+    args = ["--limit", str(limit), "--offset", str(offset)]
+    if days is not None:
+        args += ["--days", str(days)]
+    return _call("chat", args + ["--", conversation])
+
+
+@mcp.tool()
+def wecom_export_chat(conversation: str, out: str, days: int | None = None, with_media: bool = False) -> str:
+    """按会话导出完整 TXT/Markdown/HTML/JSON/CSV。with_media 生成逐消息清单和独立媒体目录。"""
+    try:
+        validate_window(days=days)
+        if not conversation.strip() or not out.strip():
+            raise ValueError("conversation 和 out 不能为空")
+    except ValueError as e:
+        return _render({"error": str(e)})
+    args = ["--out=" + out]
+    if days is not None:
+        args += ["--days", str(days)]
+    if with_media:
+        args += ["--with-media"]
+    return _call("export", args + ["--", conversation])
 
 
 @mcp.tool()
@@ -143,14 +193,14 @@ def wecom_calendar() -> str:
 
 @mcp.tool()
 def wecom_media() -> str:
-    """导出明文缓存的图片+文件(按原名)到 export/media。"""
+    """导出本地缓存，保留目录和原名，避免同名覆盖；按会话导出请用 wecom_export_chat。"""
     return _call("media", [])
 
 
 @mcp.tool()
 def wecom_openfile(keyword: str) -> str:
     """聊天里找文档→定位本体→文本解析(txt/csv/md/xlsx/docx/文本PDF)。图片型/扫描PDF 返回 🖼️VISUAL 路径,用 Read 多模态看。"""
-    return _call("openfile", [keyword])
+    return _call("openfile", ["--", keyword])
 
 
 @mcp.tool()

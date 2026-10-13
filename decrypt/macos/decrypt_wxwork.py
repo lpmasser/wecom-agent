@@ -4,7 +4,6 @@
 用法: decrypt_wxwork.py [--profile DIR] [--out DIR]
 """
 import os
-import shutil
 import sqlite3
 import sys
 
@@ -13,9 +12,9 @@ sys.path[:0] = [_H, os.path.dirname(_H)]
 from wxwork_crypto import PAGE_SZ, SQLITE_HDR, decrypt_database, load_valid_keys, table_names, verify_key
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-from wecom_paths import profile_dir
+from wecom_paths import profile_dir, decrypted
 PROFILE = profile_dir()
-OUTDIR = os.path.join(HERE, "decrypted")
+OUTDIR = decrypted()
 KEYS = os.path.join(HERE, "wxwork_keys.json")
 
 
@@ -51,9 +50,10 @@ def main():
                 pg1 = f.read(PAGE_SZ)
             outp = os.path.join(out, rel)
             if pg1[:16] == SQLITE_HDR:
-                os.makedirs(os.path.dirname(outp), exist_ok=True)
-                shutil.copy2(path, outp)
+                decrypt_database(path, outp, None)
                 copied += 1
+                if rel.replace(os.sep, "/").endswith("Messages1/Info.db"):
+                    msgdb = outp
                 continue
             key = next((k for k in keys if verify_key(k, pg1)), None)
             if not key:
@@ -72,6 +72,8 @@ def main():
                 fail += 1
 
     print(f"\n解密 {ok}, 拷贝 {copied}, 跳过/失败 {fail} → {out}")
+    if msgdb is None:
+        sys.exit("主消息库未成功更新；保留已有输出，请修复源库或 key 后重试")
     if msgdb:
         print(f"\n=== 消息库 schema: {os.path.relpath(msgdb, HERE)} ===")
         conn = sqlite3.connect(msgdb)

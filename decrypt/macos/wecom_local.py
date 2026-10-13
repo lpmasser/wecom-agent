@@ -13,33 +13,42 @@
   openfile <名/关键词>   找文档(谁/何时发)→定位本体→文本解析; 图片型/扫描PDF 输出🖼️VISUAL路径交多模态Read
 前提: 先跑 read_wecom.py 解密。用法: wecom_local.py <子命令> [参数] [--json]
 """
-import glob
 import json
 import os
 import sqlite3
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime
 
 _H = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [_H, os.path.dirname(_H)]
 import export_wxwork as ex
-from media_export import copy_unique
+from media_export import export_cache
+from local_files import open_files, print_files
+from local_io import connect_readonly, configure_stdio
+from local_query import MessageStore, parse_window, print_messages
+from transcript_export import export_chat
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 from wecom_paths import caches, decrypted
 DEC = decrypted()
 INFO = decrypted("Messages1", "Info.db")
 SESS = decrypted("Messages1", "Session.db")
-CACHES = caches()
+CACHES = None
+
+
+def _caches():
+    return CACHES or caches()
 
 
 def _conn(path):
     if not os.path.exists(path):
         sys.exit(f"缺 {path}, 先跑 read_wecom.py 解密")
-    c = sqlite3.connect(path)
-    c.row_factory = sqlite3.Row
-    return c
+    return connect_readonly(path)
+
+
+def _store(info):
+    return MessageStore(info, users=ex._load_user_names(INFO))
 
 
 def cmd_contacts(args, js=False):
@@ -61,20 +70,17 @@ def cmd_contacts(args, js=False):
 
 
 def cmd_conversations(args, js=False):
+    options = parse_window(args)
     info = _conn(INFO)
-    convn = ex._load_conv_names(info)
-    counts, last = Counter(), defaultdict(int)
-    for cid, st in info.execute("SELECT conv_id, send_time FROM MESSAGE"):
-        counts[cid] += 1
-        last[cid] = max(last[cid], st or 0)
-    info.close()
-    ordered = sorted(counts.items(), key=lambda x: last[x[0]], reverse=True)
+    try:
+        result = _store(info).conversation_page(options.limit, options.offset)
+    finally:
+        info.close()
     if js:
-        return {"count": len(counts), "conversations": [
-            {"name": convn.get(cid, cid), "messages": n, "last_time": ex.fmt_time(last[cid])} for cid, n in ordered]}
-    for cid, n in ordered:
-        print(f"  {ex.fmt_time(last[cid])}  {n:>5}条  {convn.get(cid, cid)}")
-    print(f"\n{len(counts)} 个会话")
+        return result
+    for row in result["conversations"]:
+        print(f"  {row['last_time']}  {row['messages']:>5}条  {row['name']} (ID={row['id']})")
+    print(f"\n{result['count']}/{result['total']} 个会话；下一页 offset={result['next_offset']}")
 
 
 def cmd_members(args, js=False):
@@ -82,51 +88,61 @@ def cmd_members(args, js=False):
         sys.exit("用法: members <会话名或ID>")
     q = args[0]
     info = _conn(INFO)
-    convn = ex._load_conv_names(info)
     users = ex._load_user_names(INFO)
-    targets = {cid for cid, nm in convn.items() if q == str(cid) or q in str(nm)}
-    if not targets:
-        sys.exit(f"没找到会话 '{q}'")
+    try:
+        target = _store(info).target(q)
+    except Exception:
+        info.close()
+        raise
     seen = Counter()
-    for cid in targets:
-        for (sid,) in info.execute("SELECT sender_id FROM MESSAGE WHERE conv_id=?", (cid,)):
-            seen[ex.resolve_sender(sid, users)] += 1
+    for (sid,) in info.execute("SELECT sender_id FROM MESSAGE WHERE conv_id=?", (target["id"],)):
+        seen[sid] += 1
     info.close()
     if js:
-        return {"query": q, "members": [{"name": name, "messages": n} for name, n in seen.most_common()]}
+        return {"query": q, "conversation": target, "members": [
+            {"id": str(sid), "name": ex.resolve_sender(sid, users), "messages": n} for sid, n in seen.most_common()]}
     print(f"会话 '{q}' 参与者(按发言数):")
-    for name, n in seen.most_common():
-        print(f"  {n:>4}  {name}")
+    for sid, n in seen.most_common():
+        print(f"  {n:>4}  {ex.resolve_sender(sid, users)} (ID={sid})")
 
 
 def cmd_search(args, js=False):
-    if not args:
-        sys.exit("用法: search <关键词>")
-    kw = args[0]
+    options = parse_window(args, positional="keyword")
     info = _conn(INFO)
-    users = ex._load_user_names(INFO)
-    convn = ex._load_conv_names(info)
-    kwb = kw.encode("utf-8")
-    found = []
-    for r in info.execute("SELECT conv_id, sender_id, content_type, send_time, content "
-                          "FROM MESSAGE ORDER BY send_time"):
-        raw = r["content"]
-        sender = ex.resolve_sender(r["sender_id"], users)
-        conv = convn.get(r["conv_id"], r["conv_id"])
-        if not (kw in str(conv) or kw in str(sender) or kw in ex.type_name(r["content_type"])
-                or (isinstance(raw, (bytes, bytearray)) and kwb in bytes(raw))
-                or (isinstance(raw, str) and kw in raw)):
-            continue
-        content = ex.render(r["content_type"], raw)
-        if kw in str(content) or kw in str(sender) or kw in str(conv):
-            found.append({"time": ex.fmt_time(r["send_time"]), "conv": str(conv),
-                          "sender": str(sender), "content": str(content)})
-    info.close()
+    try:
+        result = _store(info).search(options.keyword, limit=options.limit, offset=options.offset, days=options.days)
+    finally:
+        info.close()
     if js:
-        return {"keyword": kw, "count": len(found), "messages": found}
-    for m in found:
-        print(f"  [{m['time']}] {m['conv'][:14]} | {m['sender'][:8]} : {m['content'][:60]}")
-    print(f"\n命中 {len(found)} 条")
+        return result
+    print_messages(result)
+
+
+def cmd_chat(args, js=False):
+    options = parse_window(args, positional="conversation")
+    info = _conn(INFO)
+    try:
+        result = _store(info).read_chat(options.conversation, limit=options.limit or 50,
+                                       offset=options.offset, days=options.days)
+    finally:
+        info.close()
+    if js:
+        return result
+    print_messages(result)
+
+
+def cmd_export(args, js=False):
+    options = parse_window(args, positional="conversation", export=True)
+    info = _conn(INFO)
+    try:
+        result = export_chat(_store(info), INFO, options.conversation, options.out, days=options.days,
+                             output_format=options.format, with_media=options.with_media,
+                             cache_root=_caches() if options.with_media else None)
+    finally:
+        info.close()
+    if js:
+        return result
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_stats(args, js=False):
@@ -205,101 +221,38 @@ def cmd_calendar(args, js=False):
 
 
 def cmd_media(args, js=False):
-    out = args[args.index("--out") + 1] if "--out" in args else os.path.join(HERE, "export", "media")
-    total = 0
-    per = {}
-    for sub in ("Images", "Files"):
-        src = os.path.join(CACHES, sub)
-        if not os.path.isdir(src):
-            continue
-        dst_dir = os.path.join(out, sub)
-        os.makedirs(dst_dir, exist_ok=True)
-        n = 0
-        for f in glob.glob(os.path.join(src, "**", "*"), recursive=True):
-            if not os.path.isfile(f) or os.path.basename(f) == ".DS_Store":
-                continue
-            try:
-                copy_unique(f, dst_dir)
-                total += 1
-                n += 1
-            except OSError:
-                pass
-        per[sub] = n
-        if not js:
-            print(f"  {sub}: 导出到 {dst_dir}")
+    import argparse
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--out", default=os.path.join(HERE, "export", "media"))
+    options = parser.parse_args(args)
+    result = export_cache(_caches(), options.out, ("Images", "Files", "Voices", "Emotions"))
     if js:
-        return {"out": out, "total": total, **per}
-    print(f"\n共导出 {total} 个媒体文件 → {out}")
-
+        return result
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 def cmd_openfile(args, js=False):
-    if not args:
-        sys.exit("用法: openfile <文件名或关键词> [--full]")
-    import read_doc
-    kw = args[0]
-    full = "--full" in args
+    import argparse
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("keyword")
+    parser.add_argument("--full", action="store_true")
+    options = parser.parse_args(args)
     info = _conn(INFO)
-    users = ex._load_user_names(INFO)
-    convn = ex._load_conv_names(info)
-    hits = {}
-    for r in info.execute("SELECT conv_id, sender_id, send_time, content "
-                          "FROM MESSAGE WHERE content_type IN (15, 16) ORDER BY send_time"):
-        name = ex._filename(r["content"])
-        if name and kw.lower() in name.lower():
-            hits[name] = (ex.fmt_time(r["send_time"]), ex.resolve_sender(r["sender_id"], users),
-                          convn.get(r["conv_id"], r["conv_id"]))
-    info.close()
-    if not hits:
-        if js:
-            return {"keyword": kw, "count": 0, "files": []}
-        sys.exit(f"聊天里没找到含「{kw}」的文档（openfile 只查文件类消息；内联图片请用 media 导出后多模态看）")
-
-    cache = {}
-    for f in glob.glob(os.path.join(CACHES, "Files", "**", "*"), recursive=True):
-        if os.path.isfile(f) and os.path.basename(f) != ".DS_Store":
-            cache.setdefault(os.path.basename(f), []).append(f)
-
-    files = []
-    if not js:
-        print(f"匹配 {len(hits)} 个文档（含「{kw}」）:\n")
-    for name, (t, s, c) in sorted(hits.items(), key=lambda x: x[1][0]):
-        paths = cache.get(name, [])
-        entry = {"name": name, "sender": s, "time": t, "conv": str(c), "local": None, "content": None, "visual": None}
-        if not paths:
-            entry["content"] = "(本地未缓存)"
-            if not js:
-                print(f"📄 《{name}》  {s} {t} @ {c}\n   ✗ 本地未缓存（从没下载/打开过 → 需联网下载本体）\n")
-            files.append(entry)
-            continue
-        path = max(paths, key=os.path.getsize)
-        entry["local"] = path
-        body = read_doc.read_file(path, limit=20000 if full else 1500)
-        if body.startswith(read_doc.VISUAL_MARK):
-            entry["visual"] = body
-        else:
-            entry["content"] = body
-        files.append(entry)
-        if not js:
-            print(f"📄 《{name}》  {s} {t} @ {c}")
-            if len(paths) > 1:
-                print(f"   ⚠️ 本地有 {len(paths)} 份同名缓存, 取最大一份")
-            if entry["visual"]:
-                print(f"   {body}")
-            else:
-                print(f"   本地: {path}\n   ── 内容 ──")
-                for line in body.splitlines():
-                    print("   " + line)
-            print()
+    try:
+        result = open_files(_store(info), _caches(), options.keyword, full=options.full)
+    finally:
+        info.close()
     if js:
-        return {"keyword": kw, "count": len(files), "files": files}
-
+        return result
+    print_files(result)
 
 CMDS = {"contacts": cmd_contacts, "conversations": cmd_conversations, "members": cmd_members,
-        "search": cmd_search, "stats": cmd_stats, "todo": cmd_todo, "calendar": cmd_calendar,
+        "search": cmd_search, "chat": cmd_chat, "export": cmd_export,
+        "stats": cmd_stats, "todo": cmd_todo, "calendar": cmd_calendar,
         "media": cmd_media, "openfile": cmd_openfile}
 
 
 def main():
+    configure_stdio()
     if len(sys.argv) < 2 or sys.argv[1] not in CMDS:
         print(__doc__)
         print("子命令:", ", ".join(CMDS))
@@ -308,6 +261,8 @@ def main():
     args = [a for a in sys.argv[2:] if a != "--json"]
     try:
         r = CMDS[sys.argv[1]](args, js)
+    except ValueError as e:
+        sys.exit(str(e))
     except sqlite3.OperationalError as e:
         if "no such table" in str(e):
             sys.exit("解密 OK，但核心表缺失 → 数据未同步(可能是新登录)。先打开企业微信浏览消息，等同步后重试。")

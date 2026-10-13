@@ -15,11 +15,17 @@ description: Read-only local tools and confirmation-gated online tools exposed b
 | `wecom_conversations` | List local conversations with message counts and latest timestamps |
 | `wecom_members` | List participants for a matched conversation |
 | `wecom_search` | Full-text search across locally exported messages |
+| `wecom_read_chat` | Read full message bodies from a uniquely selected conversation |
+| `wecom_export_chat` | Export a local transcript with optional per-message media manifest |
 | `wecom_stats` | Summarize local message, sender, conversation, type, and time distributions |
 | `wecom_todo` | Read locally available todo records |
 | `wecom_calendar` | Read locally available calendar records |
 | `wecom_media` | Export readable cached media and files |
 | `wecom_openfile` | Locate and parse a file referenced by local chat data |
+
+Conversation and message queries return structured JSON on both macOS and Windows. `wecom_conversations(limit=100, offset=0)`, `wecom_search(keyword, days=None, limit=50, offset=0)` and `wecom_read_chat(conversation, days=None, limit=50, offset=0)` include totals and `next_offset`. Limits must be integers from 1 to 2000; offsets are nonnegative; optional days are positive. Message bodies are complete. Use the returned conversation ID to resolve duplicate names.
+
+`wecom_export_chat(conversation, out, days=None, with_media=False)` infers TXT/Markdown/HTML/JSON/CSV from the output extension. It writes only local files. With media enabled, it returns the sidecar path, unique asset directory and counts by resolution status. See [local reading](/local-reading) for the resource schema and supported media profiles.
 
 ## Local document fallback
 

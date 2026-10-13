@@ -2,14 +2,16 @@
 """企业微信本地消息**增量监控** —— 用已存的 key 重解密 Info.db, 取上次以来的新消息。
 
 特点: 无需重扫内存(key 已存 wxwork_keys.json), 无需重签; 纯读磁盘 DB + 已知 key。
-(企微在跑才会写入新消息; WAL 下最新几条可能未合并进主库, 有秒级延迟。)
+(读取经过校验的已提交主库 + WAL 快照；本地 LID 水位包含同秒及晚到消息。)
 解析复用 export_wxwork(发送者真名/类型/卡片/文件/文档)。
 用法: monitor.py [--once] [--poll 30] [--all]
   --once  跑一次即退出   --poll N 轮询秒数(默认30)   --all 忽略水位,输出全部
 """
 import json
+import argparse
+import hashlib
+import math
 import os
-import sqlite3
 import sys
 import time
 
@@ -17,6 +19,8 @@ _H = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [_H, os.path.dirname(_H)]
 from wxwork_crypto import PAGE_SZ, decrypt_database, load_valid_keys
 import export_wxwork as ex
+from local_io import atomic_output, connect_readonly, private_mkdir
+from wal_snapshot import _metadata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 from wecom_paths import decrypted, info_db, session_db
@@ -52,19 +56,21 @@ def decrypt_fresh(key):
     return info_out
 
 
-def fetch_new(info_db, watermark):
+def fetch_new(info_db, watermark, last_lid=None):
     users = ex._load_user_names(info_db)
-    conn = sqlite3.connect(info_db)
-    conn.row_factory = sqlite3.Row
+    conn = connect_readonly(info_db)
     conv = ex._load_conv_names(conn)
     out = []
     hi = watermark
+    condition, parameter = ("LID > ?", last_lid) if last_lid is not None else ("send_time >= ?", watermark)
+    high_lid = last_lid or 0
     for r in conn.execute(
         "SELECT LID, conv_id, sender_id, content_type, send_time, content "
-        "FROM MESSAGE WHERE send_time > ? ORDER BY send_time, LID", (watermark,)
+        "FROM MESSAGE WHERE " + condition + " ORDER BY LID", (parameter,)
     ):
         st = r["send_time"] or 0
         hi = max(hi, st)
+        high_lid = max(high_lid, r["LID"])
         cv = r["conv_id"]
         out.append({
             "lid": r["LID"], "send_time": st,
@@ -75,43 +81,50 @@ def fetch_new(info_db, watermark):
             "content": ex.render(r["content_type"], r["content"]),
         })
     conn.close()
-    return out, hi
+    return out, hi, high_lid
 
 
 def main():
-    once = "--once" in sys.argv
-    allmsg = "--all" in sys.argv
-    poll = float(sys.argv[sys.argv.index("--poll") + 1]) if "--poll" in sys.argv else 30.0
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--all", action="store_true")
+    parser.add_argument("--poll", type=float, default=30.0)
+    options = parser.parse_args()
+    once, allmsg, poll = options.once, options.all, options.poll
+    if not math.isfinite(poll) or poll <= 0:
+        parser.error("--poll 必须是有限的正数")
 
     key = load_messages_key()
     state = json.load(open(STATE)) if os.path.exists(STATE) else {}
+    profile_id = hashlib.sha256(os.path.realpath(SRC_INFO).encode()).hexdigest()
+    if state.get("profile") not in (None, profile_id):
+        state = {}
     watermark = 0 if allmsg else int(state.get("watermark", 0))
-    os.makedirs(os.path.dirname(OUTLOG), exist_ok=True)
-    print(f"监控启动: 水位 send_time>{watermark}; {'单次' if once else f'每{poll:.0f}s'}")
+    last_lid = 0 if allmsg else state.get("last_lid")
+    private_mkdir(os.path.dirname(OUTLOG))
+    print(f"监控启动: LID 水位 {last_lid}; {'单次' if once else f'每{poll:.0f}s'}")
 
-    last_mtime = 0
+    last_snapshot = None
 
     def tick():
-        nonlocal watermark, last_mtime
-        mt = os.path.getmtime(SRC_INFO) if os.path.exists(SRC_INFO) else 0
-        if mt == last_mtime and last_mtime:
+        nonlocal watermark, last_lid, last_snapshot
+        stamp = (_metadata(SRC_INFO), _metadata(SRC_INFO + "-wal"))
+        if stamp == last_snapshot:
             return 0                       # 源库未变 → 必无新消息, 跳过重解密
-        last_mtime = mt
         info_path = decrypt_fresh(key)
-        new, hi = fetch_new(info_path, watermark)
+        new, hi, high_lid = fetch_new(info_path, watermark, last_lid)
         if new:
-            with open(OUTLOG, "a", encoding="utf-8") as f:
+            fd = os.open(OUTLOG, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as f:
                 for m in new:
                     f.write(json.dumps(m, ensure_ascii=False) + "\n")
             for m in new:
-                print(f"  [{m['time']}] {str(m['conversation'])[:14]} | {str(m['sender'])[:8]} "
-                      f"[{m['type']}] {str(m['content'])[:48]}")
+                print(f"  [{m['time']}] {m['conversation']} | {m['sender']} [{m['type']}]\n{m['content']}")
             watermark = hi
-            json.dump({"watermark": watermark}, open(STATE, "w"))
-            try:
-                os.chmod(STATE, 0o600)
-            except OSError:
-                pass
+            last_lid = high_lid
+            with atomic_output(STATE) as stream:
+                json.dump({"watermark": watermark, "last_lid": last_lid, "profile": profile_id}, stream)
+        last_snapshot = stamp
         return len(new)
 
     if once:

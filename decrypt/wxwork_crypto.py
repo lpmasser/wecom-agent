@@ -14,8 +14,16 @@ raw_key 必须 16 字节。运行本文件 = 离线自测(不碰企业微信)。
 import hashlib
 import json
 import os
-import sqlite3
 import struct
+import tempfile
+from pathlib import Path
+
+try:
+    from .local_io import connect_readonly, validate_database
+    from .wal_snapshot import read_snapshot
+except ImportError:
+    from local_io import connect_readonly, validate_database
+    from wal_snapshot import read_snapshot
 
 PAGE_SZ = 4096
 SQLITE_HDR = b"SQLite format 3\x00"
@@ -134,22 +142,35 @@ def verify_key(raw_key, page1):
         return False
 
 
-def decrypt_database(db_path, out_path, raw_key):
-    size = os.path.getsize(db_path)
-    total_pages = (size + PAGE_SZ - 1) // PAGE_SZ
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    with open(db_path, "rb") as fin, open(out_path, "wb") as fout:
-        for page_no in range(1, total_pages + 1):
-            page = fin.read(PAGE_SZ)
-            if not page:
-                break
-            if len(page) < PAGE_SZ:
-                page += b"\x00" * (PAGE_SZ - len(page))
-            fout.write(decrypt_page(raw_key, page, page_no))
+def decrypt_database(db_path, out_path, raw_key, *, reader=None):
+    """Decrypt a stable committed snapshot; retain the old output on any failure."""
+    if Path(db_path).resolve() == Path(out_path).resolve():
+        raise ValueError("source and output database must be different")
+    data = read_snapshot(db_path, reader=reader)
+    if len(data) < PAGE_SZ or len(data) % PAGE_SZ:
+        raise ValueError("Incomplete database page; refusing to pad ciphertext")
+    plain = data.startswith(SQLITE_HDR)
+    if not plain and not verify_key(raw_key, data[:PAGE_SZ]):
+        raise ValueError("key validation failed")
+    parent = Path(out_path).parent
+    parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp = tempfile.mkstemp(prefix=".wecom-", suffix=".db", dir=parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            for offset in range(0, len(data), PAGE_SZ):
+                page = data[offset:offset + PAGE_SZ]
+                stream.write(page if plain else decrypt_page(raw_key, page, offset // PAGE_SZ + 1))
+            stream.flush()
+            os.fsync(stream.fileno())
+        validate_database(tmp)
+        os.replace(tmp, out_path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def table_names(path):
-    conn = sqlite3.connect(path)
+    conn = connect_readonly(path, immutable=True)
     try:
         return [
             r[0]

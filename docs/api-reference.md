@@ -7,6 +7,29 @@ description: Public helpers for WecomTeam CLI calls, documents, standard sheets,
 
 The public modules expose small functions that are directly testable with injected runners. Online writes require `confirmed=True`; read-only metadata calls do not.
 
+## Local queries and transcript exports
+
+```python
+from contextlib import closing
+from decrypt.local_io import connect_readonly
+from decrypt.local_query import MessageStore
+from decrypt.transcript_export import export_chat
+
+with closing(connect_readonly("/path/to/Info.db")) as conn:
+    store = MessageStore(conn)  # platform="windows" for message_table schemas
+    conversations = store.conversation_page(limit=100, offset=0)
+    messages = store.search("keyword", days=7, limit=50, offset=0)
+    chat = store.read_chat("conversation-id", days=7, limit=50)
+    result = export_chat(
+        store, "/path/to/Info.db", "conversation-id", "export/chat.html",
+        with_media=True, cache_root="/path/to/Caches",
+    )
+```
+
+The query result includes full message bodies, stable message/conversation IDs and pagination totals. Invalid windows and ambiguous conversation names raise `ValueError` before export. `export_chat` writes a private local transcript and optionally a media sidecar with relative files in a fresh asset directory. Unknown or missing media stays explicit; no remote downloads occur. The platform CLIs supply native user/conversation name maps and Windows single-chat name resolution.
+
+`decrypt.wxwork_crypto.decrypt_database(db_path, out_path, raw_key, reader=None)` consumes a validated committed main/WAL snapshot, decrypts wxSQLite3 AES-128 pages and checks ordinary SQLite tables before atomic publication. `reader` is keyword-only and supports the Windows shared file reader. A plain SQLite input may pass `raw_key=None`. Failures leave the existing output intact. See [local reading](/local-reading) for the no-HMAC integrity boundary.
+
 ## CLI foundation
 
 ### `WecomCliError`

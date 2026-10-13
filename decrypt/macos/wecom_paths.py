@@ -19,13 +19,16 @@ def profile_dir():
         p = env if os.path.isdir(env) else os.path.join(_PROFILES, env)
         if os.path.isdir(p):
             return p
+        raise SystemExit("WECOM_PROFILE 指定的目录不存在；请修正该配置")
     cands = [
         d for d in glob.glob(os.path.join(_PROFILES, "*"))
         if os.path.isdir(d) and os.path.isdir(os.path.join(d, "Messages1"))
     ]
     if not cands:
         raise SystemExit(f"未找到企业微信 profile (在 {_PROFILES})；企微是否登录过？")
-    return max(cands, key=os.path.getmtime)   # 多账号取最近活跃
+    if len(cands) > 1:
+        raise SystemExit("发现多个企业微信账号；请用 WECOM_PROFILE 指定要读取的 profile 目录")
+    return cands[0]
 
 
 def info_db():
@@ -37,9 +40,9 @@ def session_db():
 
 
 def caches():
-    return os.path.join(profile_dir(), "Caches")
+    return os.environ.get("WECOM_CACHE_DIR") or os.path.join(profile_dir(), "Caches")
 
 
 def decrypted(*parts):
     """解密输出树 decrypt/macos/decrypted/ 下的路径。"""
-    return os.path.join(_HERE, "decrypted", *parts)
+    return os.path.join(os.environ.get("WECOM_DECRYPTED_DIR") or os.path.join(_HERE, "decrypted"), *parts)

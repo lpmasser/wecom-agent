@@ -8,13 +8,19 @@
 - 跳过 FTS 虚拟表(避免 icu tokenizer)。
 用法: export_wxwork.py [--db 解密后的Info.db] [--out 目录]
 """
-import csv
 import json
 import os
 import re
 import sqlite3
 import sys
 from datetime import datetime
+
+try:
+    from .local_io import connect_readonly, quote_identifier, configure_stdio
+    from .protobuf_fields import fields, ordered_fields, single_text
+except ImportError:
+    from local_io import connect_readonly, quote_identifier, configure_stdio
+    from protobuf_fields import fields, ordered_fields, single_text
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB = os.path.join(HERE, "decrypted", "Messages1", "Info.db")
@@ -24,7 +30,7 @@ _SHADOW = ("_content", "_segdir", "_segments", "_docsize", "_idx", "_data", "_co
 # content_type → 类型名（据实测样本归类；未知码回退 type<码>）
 TYPE_LABEL = {
     0: "文本", 2: "文本", 6: "文本",
-    13: "文档链接", 29: "图片", 4: "图片", 14: "语音", 15: "文件", 16: "文件",
+    13: "文档链接", 29: "表情", 4: "复合消息", 14: "图片", 15: "文件", 16: "语音",
     40: "音视频通话", 1073: "会议",
     38: "系统通知", 501: "系统", 503: "系统", 1011: "协作事件",
     1001: "事件", 1002: "事件", 1006: "事件", 1018: "事件", 1022: "事件", 1051: "事件", 1052: "事件",
@@ -32,13 +38,19 @@ TYPE_LABEL = {
     561: "卡片", 565: "卡片", 570: "卡片", 573: "卡片", 579: "卡片", 580: "卡片", 581: "卡片", 582: "卡片",
 }
 # 二进制媒体：不强抽文本，直接给标签(+ URL 若有)
-MEDIA = {14: "[语音]", 15: "[文件]", 16: "[文件]", 29: "[图片]", 4: "[图片]", 40: "[音视频通话]"}
+MEDIA = {14: "[图片]", 15: "[文件]", 16: "[语音]", 29: "[表情]", 40: "[音视频通话]"}
 # 卡片/应用消息：内嵌 JSON，解析 标题+链接
 CARD_TYPES = {10, 20, 105, 123, 145, 221, 516, 561, 565, 570, 573, 579, 580, 581, 582}
+WINDOWS_TYPES = {**TYPE_LABEL, 6: "位置", 1018: "语音通话", 1001: "会议", 70: "待办", 215: "笔记",
+                 580: "会议", 581: "会议", 582: "会议", 1011: "协作", 565: "协作", 570: "协作",
+                 38: "系统", 1022: "系统", 1002: "系统", 1006: "系统", 1017: "系统", 1051: "系统",
+                 1052: "系统", 1055: "系统", 1004: "系统", 671: "系统", 132: "系统", 21: "卡片", 22: "卡片"}
+WINDOWS_MEDIA = {**MEDIA, 1018: "[语音通话]"}
+WINDOWS_CARDS = CARD_TYPES | {21, 22}
 
 
 def _cols(conn, table):
-    return [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
+    return [r[1] for r in conn.execute('PRAGMA table_info(' + quote_identifier(table) + ')')]
 
 
 def _pick(cols, *keys):
@@ -109,7 +121,7 @@ def _load_user_names(info_db):
     if not os.path.exists(p):
         return m
     try:
-        c = sqlite3.connect(p)
+        c = connect_readonly(p)
         cols = [r[1] for r in c.execute("PRAGMA table_info(USER)")]
         if "RID" in cols and "name" in cols:
             for rid, name in c.execute("SELECT RID, name FROM USER"):
@@ -152,10 +164,9 @@ def _seg_text(seg):
         t = seg.decode("utf-8")
     except UnicodeDecodeError:
         return None
-    t = "".join(ch if ch.isprintable() or ch in "\n\t" else " " for ch in t).strip()
-    if len(t) < 2 or re.fullmatch(r"[0-9a-fA-F]{32,}", t):
+    if any(not ch.isprintable() and ch not in "\r\n\t" for ch in t):
         return None
-    if sum(c.isprintable() or c in "\n\t" for c in t) / max(len(t), 1) < 0.9:
+    if not t or re.fullmatch(r"[0-9a-fA-F]{32,}", t):
         return None
     return t
 
@@ -163,36 +174,21 @@ def _seg_text(seg):
 def _pb_strings(d, depth=0):
     if depth > 4 or not d:
         return []
-    p = 0; out = []; fields = 0
+    out = []
     try:
-        while p < len(d):
-            tag, p = _rv(d, p)
-            if tag == 0:
-                return []
-            wire = tag & 7; fields += 1
-            if wire == 0:
-                _, p = _rv(d, p)
-            elif wire == 1:
-                p += 8
-            elif wire == 5:
-                p += 4
-            elif wire == 2:
-                ln, p = _rv(d, p)
-                if ln < 0 or p + ln > len(d):
-                    return []
-                seg = d[p:p + ln]; p += ln
-                rec = _pb_strings(seg, depth + 1)   # 优先钻到最内层文本(去框架字节)
-                if rec:
-                    out.extend(rec)
-                else:
-                    t = _seg_text(seg)
-                    if t:
-                        out.append(t)
+        for _, seg in ordered_fields(d):
+            if not isinstance(seg, bytes):
+                continue
+            rec = _pb_strings(seg, depth + 1)   # 优先钻到最内层文本(去框架字节)
+            if rec:
+                out.extend(rec)
             else:
-                return []
-    except Exception:
+                t = _seg_text(seg)
+                if t:
+                    out.append(t)
+    except ValueError:
         return []
-    return out if fields else []
+    return out
 
 
 def decode_text(raw):
@@ -200,28 +196,17 @@ def decode_text(raw):
     if raw is None:
         return ""
     if isinstance(raw, str):
-        return raw.strip()
+        return raw
     d = bytes(raw)
     if not d:
         return ""
-    ctrl = sum(b < 32 and b not in (9, 10, 13) for b in d)
-    if ctrl == 0:
-        try:
-            return d.decode("utf-8").strip()
-        except UnicodeDecodeError:
-            pass
     ss = _pb_strings(d)
     if ss:
-        seen = set(); u = []
-        for s in ss:
-            s = s.strip()
-            if s and s not in seen:
-                seen.add(s); u.append(s)
-        if u:
-            return "\n".join(u[:12])
+        return "\n".join(ss)
     try:
-        if ctrl / max(len(d), 1) < 0.15:
-            return d.decode("utf-8").strip()
+        text = d.decode("utf-8")
+        if all(ch.isprintable() or ch in "\r\n\t" for ch in text):
+            return text
     except UnicodeDecodeError:
         pass
     return ""
@@ -244,6 +229,12 @@ def _first_url(raw, skip_assets=True):
 def _filename(raw):
     if not isinstance(raw, (bytes, bytearray)):
         return ""
+    try:
+        name = single_text(fields(raw), 2)
+        if name and not any(ch in name for ch in ("/", "\\", "\x00")):
+            return name
+    except ValueError:
+        pass
     best = ""
     for m in re.findall(rb"(?:[\x20-\x7e]|[\xe4-\xe9][\x80-\xbf][\x80-\xbf]){4,}", bytes(raw)):
         s = m.decode("utf-8", "replace").strip()
@@ -255,7 +246,7 @@ def _filename(raw):
         score = (100 if "." in s else 0) + len(s)
         if score > (100 if "." in best else 0) + len(best):
             best = s
-    return best[:80]
+    return best
 
 
 def _extract_json(b):
@@ -296,24 +287,26 @@ def _card_title(j):
     return ""
 
 
-def render(content_type, raw):
+def render(content_type, raw, platform="macos"):
     """按类型呈现正文：媒体→标签(+URL)；卡片→标题+链接；文本/系统→抽取文本。"""
     try:
         ct = int(content_type or 0)
     except (TypeError, ValueError):
         ct = 0
     txt = decode_text(raw)
-    if ct in (15, 16):                         # 文件: 提文件名
+    media = WINDOWS_MEDIA if platform == "windows" else MEDIA
+    cards = WINDOWS_CARDS if platform == "windows" else CARD_TYPES
+    if ct == 15:                               # 文件: 提文件名
         fn = _filename(raw)
         return f"[文件] {fn}".strip() if fn else "[文件]"
     if ct == 13:                               # 文档链接: 标题+链接
         url = _first_url(raw)
         title = txt.split("http")[0].strip().split("\n")[0][:60] if txt else ""
         return ("[文档] " + " ".join(p for p in (title, url) if p)).strip()
-    if ct in MEDIA:
-        url = _first_url(raw, skip_assets=False)
-        return (MEDIA[ct] + (" " + url if url else "")).strip()
-    if ct in CARD_TYPES:
+    if ct in media:
+        # CDN URLs can contain credentials and are not the human message body.
+        return media[ct]
+    if ct in cards:
         j = _extract_json(bytes(raw)) if isinstance(raw, (bytes, bytearray)) else None
         title = _card_title(j)
         if not title and txt:
@@ -326,12 +319,13 @@ def render(content_type, raw):
     return f"[{TYPE_LABEL.get(ct, '类型' + str(ct))}]"
 
 
-def type_name(content_type):
+def type_name(content_type, platform="macos"):
     try:
         ct = int(content_type or 0)
     except (TypeError, ValueError):
         return str(content_type)
-    return TYPE_LABEL.get(ct, f"type{ct}")
+    labels = WINDOWS_TYPES if platform == "windows" else TYPE_LABEL
+    return labels.get(ct, f"type{ct}")
 
 
 def fmt_time(ts):
@@ -350,70 +344,44 @@ def fmt_time(ts):
 
 
 def main():
-    db, out = DEFAULT_DB, OUTDIR
-    if "--db" in sys.argv:
-        db = sys.argv[sys.argv.index("--db") + 1]
-    if "--out" in sys.argv:
-        out = sys.argv[sys.argv.index("--out") + 1]
-    if not os.path.exists(db):
-        sys.exit(f"消息库不存在: {db} (先跑 decrypt_wxwork.py)")
-
-    users = _load_user_names(db)
-    conn = sqlite3.connect(db)
-    conn.row_factory = sqlite3.Row
-    conv_names = _load_conv_names(conn)
-    tables = find_message_tables(conn)
-    if not tables:
-        names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
-        sys.exit(f"未识别到消息表(含 content+time+sender)。库内表: {names}")
-    print(f"USER 姓名表 {len(users)} 人; 会话名 {len(conv_names)} 个")
-
-    os.makedirs(out, exist_ok=True)
-    rows = []
-    for t, cols, content_c, time_c, sender_c in tables:
-        conv_c = _pick(cols, "conv_id", "conversation", "conv", "chat", "room", "session", "talker")
-        type_c = _pick(cols, "content_type", "msgtype", "type")
-        sel = list(dict.fromkeys(c for c in (conv_c, sender_c, time_c, type_c, content_c) if c))
-        q = 'SELECT ' + ",".join(f'"{c}"' for c in sel) + f' FROM "{t}"'
-        n0 = len(rows)
-        for r in conn.execute(q):
-            cv = r[conv_c] if conv_c else ""
-            sid = r[sender_c] if sender_c else ""
-            ct = r[type_c] if type_c else 0
-            rows.append({
-                "table": t,
-                "time": fmt_time(r[time_c] if time_c else 0),
-                "conv_id": cv,
-                "conversation": conv_names.get(cv, cv),
-                "sender_id": sid,
-                "sender": resolve_sender(sid, users),
-                "type_code": ct,
-                "type": type_name(ct),
-                "content": render(ct, r[content_c]),
-            })
-        print(f"{t}: {len(rows)-n0} 行  (conv={conv_c}, sender={sender_c}, time={time_c}, "
-              f"type={type_c}, content={content_c})")
-    conn.close()
-
-    rows.sort(key=lambda x: x["time"])
-    cpath = os.path.join(out, "messages.csv")
-    with open(cpath, "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.writer(f)
-        w.writerow(["时间", "会话", "会话ID", "发送者", "发送者ID", "类型", "type码", "正文", "来源表"])
-        for x in rows:
-            w.writerow([x["time"], x["conversation"], x["conv_id"], x["sender"], x["sender_id"],
-                        x["type"], x["type_code"], x["content"], x["table"]])
-    json.dump(rows, open(os.path.join(out, "messages.json"), "w"), ensure_ascii=False, indent=2)
-
-    name_set = set(users.values())
-    named = sum(1 for x in rows if x["sender"] in name_set)
-    readable = sum(1 for x in rows if x["content"] and not x["content"].startswith("["))
-    print(f"\n✅ 结构化提取 {len(rows)} 条 → {cpath} + messages.json")
-    print(f"   发送者解析出真名 {named} 条; 正文为可读文本 {readable} 条")
-    print("最近样本:")
-    for x in rows[-18:]:
-        print(f"  [{x['time']}] {str(x['conversation'])[:14]} | {str(x['sender'])[:8]} "
-              f"[{x['type']}] {str(x['content'])[:42]}")
+    configure_stdio()
+    import argparse
+    try:
+        from .local_query import MessageStore, validate_window
+        from .transcript_export import export_all, export_chat
+        from .macos import wecom_paths
+    except ImportError:
+        from local_query import MessageStore, validate_window
+        from transcript_export import export_all, export_chat
+        from macos import wecom_paths
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", default=wecom_paths.decrypted("Messages1", "Info.db"))
+    parser.add_argument("--out", default=os.path.join(HERE, "macos", "export"))
+    parser.add_argument("--conversation")
+    parser.add_argument("--days", type=int)
+    parser.add_argument("--format", choices=("txt", "markdown", "html", "json", "csv"))
+    parser.add_argument("--with-media", action="store_true")
+    parser.add_argument("--cache-dir")
+    options = parser.parse_args()
+    try:
+        validate_window(days=options.days)
+        if (options.with_media or options.format) and not options.conversation:
+            raise ValueError("--with-media/--format 需要 --conversation；--out 为导出文件路径")
+        conn = connect_readonly(options.db)
+        try:
+            store = MessageStore(conn, users=_load_user_names(options.db))
+            if options.conversation:
+                result = export_chat(store, options.db, options.conversation, options.out,
+                                     days=options.days, output_format=options.format,
+                                     with_media=options.with_media,
+                                     cache_root=(options.cache_dir or wecom_paths.caches()) if options.with_media else None)
+            else:
+                result = export_all(store, options.out, days=options.days, chinese_headers=True)
+        finally:
+            conn.close()
+    except (ValueError, sqlite3.Error) as e:
+        sys.exit(str(e))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

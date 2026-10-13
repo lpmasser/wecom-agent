@@ -107,10 +107,18 @@ $PY decrypt/macos/wecom_local.py <contacts|conversations|members|search|stats|to
 | `conversations` | 会话列表 |
 | `members <会话>` | 群成员与发言数 |
 | `search <词>` | 全文搜索消息 |
+| `chat <会话ID> [--days N] [--limit N] [--offset N]` | 按唯一会话读取完整正文，最新在前 |
+| `export <会话ID> --out 文件 [--with-media]` | 导出 TXT/Markdown/HTML/JSON/CSV，附逐消息媒体清单 |
 | `stats` | 发言/会话/类型/时间统计 |
 | `todo` / `calendar` | 本地待办 / 日程 |
 | `media [--out]` | 导出明文缓存图片和文件 |
 | `openfile <名/词>` | 从聊天记录定位并解析本地文件 |
+
+`conversations`、`search`、`chat` 支持 `--limit 1..2000 --offset N --json`；`search`、`chat`、`export` 的 `--days` 必须为正整数，不传则覆盖全部日期。CLI 的会话列表与搜索不传 limit 时保留全量行为，MCP 默认分别返回 100、50 条。消息正文不截断。名称重名时必须使用返回的会话 ID，不合并群成员。
+
+`export --with-media` 用企微消息资源标识关联缓存，生成 `<stem>.media.json` 与 `<stem>.assets-<export-id>/`。只导出所选会话/日期范围的媒体；同名文件按资源 ID 区分；缺失、加密或歧义明确标注。具体 schema 和边界见 [本地读取与导出](docs/local-reading.md)。
+
+多账号必须指定 `WECOM_PROFILE`（macOS profile 目录）或 `WECOM_DATA_DIR`（Windows Data 目录）。迁移解密库可用 `WECOM_DECRYPTED_DIR`，独立缓存可用 `WECOM_CACHE_DIR`；无有效配置时不自动切换到其他账号。消息库只读打开，解密使用已提交主库/WAL 快照，并在校验通过后原子替换旧输出。
 
 可选语音转写：
 
@@ -137,7 +145,7 @@ python decrypt/windows/wecom_win.py <key> <子命令>
 bash setup.sh
 ```
 
-本地读取工具：`wecom_contacts/conversations/members/search/stats/todo/calendar/media/openfile`。
+本地读取工具：`wecom_contacts/conversations/members/search/stats/todo/calendar/media/openfile`，以及 `wecom_read_chat`、`wecom_export_chat`。
 
 本地文档 fallback：
 
