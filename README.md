@@ -35,9 +35,13 @@ $PY decrypt/macos/monitor.py --poll 30
 $PY decrypt/macos/voice_transcribe.py
 ```
 
+On macOS, `read_wecom.py` now only refreshes the chat/name snapshots using existing keys. Missing keys stop the command; run `find_key_fast.py` explicitly for initial capture. No bulk export is created unless requested with `read_wecom.py --export <directory>`. After a task, `read_wecom.py --clean` removes only the chat snapshots and their SQLite sidecars, preserving keys, source databases and exports. For other local databases such as todos/calendars, explicitly run `decrypt_wxwork.py`.
+
 Local queries preserve full text and line breaks. MCP conversation/message queries are paginated; duplicate conversation names require an explicit ID. Exports support TXT, Markdown, HTML, JSON and CSV. `--with-media` links native WeCom resource IDs to cached images, files, voice and emotions, with a per-message JSON manifest and a fresh asset directory. Missing, encrypted, ambiguous and unknown media stay explicit. See [local reading and exports](docs/local-reading.md).
 
 Select multiple accounts explicitly with `WECOM_PROFILE` (macOS) or `WECOM_DATA_DIR` (Windows). Relocated decrypted databases and media caches use `WECOM_DECRYPTED_DIR` and `WECOM_CACHE_DIR`.
+
+New macOS runtime data defaults to `~/.local/share/wecom-agent/<profile>/`. Use `WECOM_STATE_DIR` to choose its parent or `WECOM_KEYS_FILE` for an existing key file. Existing source-local keys/snapshots remain usable when no new path is configured. Capture commands never print key values.
 
 ## Online Documents And Sheets
 

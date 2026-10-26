@@ -30,8 +30,8 @@ On Windows, replace `.venv/bin/python` with `.venv\Scripts\python.exe`.
 
 <Steps>
   <Step title="Prepare local data">Follow the repository's macOS key and decrypt procedure for your own signed-in WeCom account.</Step>
-  <Step title="Build the local export">Run `python3 decrypt/macos/read_wecom.py`.</Step>
-  <Step title="Query the export">Run `python3 decrypt/macos/wecom_local.py stats` or a read-only search command.</Step>
+  <Step title="Refresh chat snapshots">Run `python3 decrypt/macos/read_wecom.py`. This reuses existing keys and does not capture keys or export all messages.</Step>
+  <Step title="Query and clean">Run `python3 decrypt/macos/wecom_local.py stats` or a read-only search. After the task, run `python3 decrypt/macos/read_wecom.py --clean` to remove derived chat snapshots while keeping keys.</Step>
 </Steps>
 
 ```bash

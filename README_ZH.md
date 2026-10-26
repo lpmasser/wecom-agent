@@ -39,7 +39,11 @@ $PY decrypt/macos/voice_transcribe.py
 
 查询保留完整正文和换行；MCP 会话与消息查询支持分页。会话名称重名时会列出候选 ID，不会合并多个群。导出支持 TXT、Markdown、HTML、JSON、CSV；`--with-media` 按消息资源标识定位本地图片、文件、语音和表情，生成逐消息清单及独立媒体目录。缺失、加密、同标识不同内容和未知格式均明确标注，详见 [本地读取与导出](docs/local-reading.md)。
 
+macOS 的 `read_wecom.py` 现在默认只用已有密钥刷新聊天库和姓名库，缺钥时停止，不自动扫描或全量导出。首次取钥显式运行 `find_key_fast.py`；全量 JSON/CSV 导出用 `read_wecom.py --export <目录>`；任务结束用 `read_wecom.py --clean` 清理聊天快照及 SQLite sidecar，保留密钥、原始库和导出。需要本地待办／日程等其他库时显式运行 `decrypt_wxwork.py`。
+
 多账号请明确设置 macOS `WECOM_PROFILE` 或 Windows `WECOM_DATA_DIR`；移动后的解密库与缓存可分别通过 `WECOM_DECRYPTED_DIR`、`WECOM_CACHE_DIR` 指定。
+
+新安装的 macOS 运行数据默认位于 `~/.local/share/wecom-agent/<profile>/`；`WECOM_STATE_DIR` 可改父目录，`WECOM_KEYS_FILE` 可指定已有密钥文件。未指定新路径时仍复用已有源码目录内的密钥／快照，取钥命令不打印密钥值。
 
 ## 在线文档和表格
 

@@ -189,8 +189,11 @@ def load_valid_keys(keys_json, page1=None):
     if not os.path.exists(keys_json):
         return out
     try:
-        data = json.load(open(keys_json))
+        with open(keys_json, encoding="utf-8") as stream:
+            data = json.load(stream)
     except (ValueError, OSError):
+        return out
+    if not isinstance(data, dict):
         return out
     for v in data.values():
         try:

@@ -59,7 +59,9 @@ wecom-cli <service> [resource...] <method> --json '<json参数>'
 | `todo` | 先用 `wecom-cli todo --help` 核对当前命令和参数 |
 | `contact` / `message` / `calendar` / `meeting` | 权限按企业环境实测；遇到明确权限错误时不要继续重试 |
 
-遇到具体参数不确定时，优先查 `wecom-cli <category> --help` 或 WecomTeam `wecom-unified` references。
+遇到具体参数不确定时，优先查 `wecom-cli <category> --doc` 或 WecomTeam/wecom-cli 对应的 `skills/wecomcli-*/references`。
+
+会议纪要和待办来自 `meeting get`；逐句原文来自 `meeting original get`，不能互相替代。直接复用官方 CLI 的 `--page-count N --output 文件` 自动分页与原始响应落盘（NDJSON，每行一页），检查末页 `has_more`；若仍为 true，沿 `next_cursor` 继续，不把页数上限当作完整结果。保留会议/子会议标识、原时间和发言人。多录音段的范围按当前 `--doc` 与实际响应确认，无法确认时明确说明，不猜测段数。
 
 ## A 在线文档/表格
 
@@ -85,15 +87,20 @@ $PY -m online.selfcheck
 
 ### macOS
 
-前提：企业微信运行并登录；首次抓 key 需要已对企微 adhoc 重签，见 `docs/解密思路.md`。
+首次抓 key 需要企业微信运行并登录，签名条件见 `docs/解密思路.md`。已有有效密钥时直接离线刷新，不需要重签或扫描内存。
 
 ```bash
 PY=${WECOM_PYTHON:-/opt/homebrew/bin/python3}
 $PY decrypt/macos/read_wecom.py
+# 缺钥时停止；需要首次取钥才单独运行（不自动重签或改系统设置）
 $PY decrypt/macos/find_key_fast.py
+# 可选：刷新聊天以外的全部本地数据库（例如本地 todo/calendar）
 $PY decrypt/macos/decrypt_wxwork.py
-$PY decrypt/macos/monitor.py --once
 ```
+
+`read_wecom.py` 默认只用已有密钥刷新 Info.db 和 Session.db，不再自动取钥或全量导出。全量 JSON/CSV 导出显式用 `read_wecom.py --export <目录>`，单个会话继续用下方 `export`。查询任务完成后用 `read_wecom.py --clean` 删除可重建的聊天快照和 SQLite sidecar；密钥、原始库、用户导出和其他文件保留。
+
+新安装的 macOS 密钥和快照默认在 `~/.local/share/wecom-agent/<profile>/`，可用 `WECOM_STATE_DIR` 改父目录、`WECOM_KEYS_FILE` 指定已有密钥文件；显式配置不回退到其他路径。未指定新路径时仍复用原有源码目录内的密钥／快照。取钥只显示命中目标，不打印密钥；临时编译的扫描库自动清理。
 
 本地查询：
 

@@ -17,8 +17,9 @@ import sys
 _H = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [_H, os.path.dirname(_H)]
 from wxwork_crypto import PAGE_SZ, quick_verify, verify_key
+from local_io import atomic_output
 
-from wecom_paths import profile_dir
+from wecom_paths import profile_dir, keys_file
 PROFILE = profile_dir()
 # 同 magic = 同 key 一组; 不同库可能不同 key, 都试
 TARGETS = {
@@ -28,7 +29,7 @@ TARGETS = {
 }
 ALLKEYS = "/tmp/allkeys.txt"
 CARVE = "/tmp/carve.bin"
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wxwork_keys.json")
+OUT = keys_file()
 
 
 def load_page1(path):
@@ -55,7 +56,7 @@ def iter_candidates():
                 if cand not in seen:
                     seen.add(cand)
                     n += 1
-                    yield cand, f"allkeys:{h[:12]}.."
+                    yield cand, f"allkeys candidate {n}"
         print(f"[*] allkeys.txt 派生 {n} 个 16B 候选")
     if os.path.exists(CARVE):
         data = open(CARVE, "rb").read()
@@ -89,18 +90,15 @@ def main():
                 continue
             if quick_verify(cand, pg) and verify_key(cand, pg):
                 found[name] = {"key": cand.hex(), "src": src}
-                print(f"\n  [FOUND] {name}\n    key = {cand.hex()}\n    src = {src}")
+                print(f"\n  [FOUND] {name}\n    src = {src}")
         if len(found) == len(pages):
             break
 
     print(f"\n[*] 共测 {tested} 候选; 命中 {len(found)}/{len(pages)}")
     if found:
-        json.dump({k: v["key"] for k, v in found.items()},
-                  open(OUT, "w"), indent=2, ensure_ascii=False)
-        try:
-            os.chmod(OUT, 0o600)
-        except OSError:
-            pass
+        with atomic_output(OUT) as stream:
+            json.dump({k: v["key"] for k, v in found.items()},
+                      stream, indent=2, ensure_ascii=False)
         print(f"[*] 已保存 {OUT} (0600)")
         print("[*] 下一步: 用该 key 解密 → 结构化导出")
     else:

@@ -10,12 +10,14 @@ import os
 CONTAINER = os.path.expanduser("~/Library/Containers/com.tencent.WeWorkMac/Data")
 _PROFILES = os.path.join(CONTAINER, "Documents", "Profiles")
 _HERE = os.path.dirname(os.path.abspath(__file__))
+CHAT_DATABASES = ("Messages1/Info.db", "Messages1/Session.db")
 
 
 @functools.lru_cache(maxsize=1)
 def profile_dir():
     env = os.environ.get("WECOM_PROFILE")
     if env:
+        env = os.path.expanduser(env)
         p = env if os.path.isdir(env) else os.path.join(_PROFILES, env)
         if os.path.isdir(p):
             return p
@@ -43,6 +45,26 @@ def caches():
     return os.environ.get("WECOM_CACHE_DIR") or os.path.join(profile_dir(), "Caches")
 
 
+def state_dir():
+    """Private runtime root, separated by the selected native profile."""
+    base = os.path.expanduser(os.environ.get("WECOM_STATE_DIR", "~/.local/share/wecom-agent"))
+    return os.path.join(base, os.path.basename(os.path.normpath(profile_dir())))
+
+
+def keys_file():
+    explicit = os.environ.get("WECOM_KEYS_FILE")
+    if explicit:
+        return os.path.expanduser(explicit)
+    legacy = os.path.join(_HERE, "wxwork_keys.json")
+    if not os.environ.get("WECOM_STATE_DIR") and os.path.isfile(legacy):
+        return legacy
+    return os.path.join(state_dir(), "wxwork_keys.json")
+
+
 def decrypted(*parts):
-    """解密输出树 decrypt/macos/decrypted/ 下的路径。"""
-    return os.path.join(os.environ.get("WECOM_DECRYPTED_DIR") or os.path.join(_HERE, "decrypted"), *parts)
+    """Honor explicit paths; reuse existing legacy snapshots without moving data."""
+    base = os.environ.get("WECOM_DECRYPTED_DIR")
+    if not base:
+        legacy = os.path.join(_HERE, "decrypted")
+        base = legacy if not os.environ.get("WECOM_STATE_DIR") and os.path.isdir(legacy) else os.path.join(state_dir(), "decrypted")
+    return os.path.join(os.path.expanduser(base), *parts)

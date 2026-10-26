@@ -93,7 +93,8 @@ class PlatformTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("test_mac_monitor", path)
         module = importlib.util.module_from_spec(spec)
         fake_paths = SimpleNamespace(decrypted=lambda *parts: str(self.root.joinpath(*parts)),
-                                     info_db=lambda: str(self.path), session_db=lambda: str(self.root / "Session.db"))
+                                     info_db=lambda: str(self.path), session_db=lambda: str(self.root / "Session.db"),
+                                     keys_file=lambda: str(self.root / "wxwork_keys.json"))
         with patch.dict(sys.modules, {"wecom_paths": fake_paths}):
             spec.loader.exec_module(module)
         return module

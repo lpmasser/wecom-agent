@@ -10,19 +10,21 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 
 _H = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [_H, os.path.dirname(_H)]
-from wxwork_crypto import PAGE_SZ, generate_initial_vector, verify_key
+from wxwork_crypto import PAGE_SZ, generate_initial_vector, load_valid_keys, verify_key
+from local_io import atomic_output
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-from wecom_paths import profile_dir
+from wecom_paths import profile_dir, keys_file
 PROFILE = profile_dir()
 TARGETS = [("messages", "Messages1/Info.db"),
            ("session", "Messages1/Session.db"),
            ("contact", "Contact/Contact.db")]
-OUT = os.path.join(HERE, "wxwork_keys.json")
+OUT = keys_file()
 LIB = os.path.join(HERE, "validate.dylib")
 SRC = os.path.join(HERE, "validate.c")
 
@@ -34,6 +36,28 @@ def find_pid():
     )
     s = r.stdout.split()
     return int(s[0]) if s else None
+
+
+def load_validator():
+    if not os.path.exists(LIB):                       # 首次/分发后: 缺 dylib 则现编 validate.c
+        if not os.path.exists(SRC):
+            sys.exit(f"缺 {LIB} 且无源码 {SRC}")
+        print("validate.dylib 不存在, 自动编译 validate.c …", file=sys.stderr)
+        with tempfile.TemporaryDirectory(prefix="wecom-validator-") as temporary:
+            library = os.path.join(temporary, "validate.dylib")
+            cc = subprocess.run(["clang", "-O3", "-dynamiclib", "-o", library, SRC],
+                                capture_output=True, text=True)
+            if cc.returncode or not os.path.exists(library):
+                sys.exit(f"编译 validate.c 失败 (需 Xcode 命令行工具):\n{cc.stderr}")
+            lib = ctypes.CDLL(library)  # macOS keeps the loaded image mapped after unlink.
+    else:
+        lib = ctypes.CDLL(LIB)
+    lib.scan_buf.restype = ctypes.c_long
+    lib.scan_buf.argtypes = [ctypes.c_char_p, ctypes.c_long, ctypes.c_int,
+                             ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+                             ctypes.c_char_p, ctypes.c_char_p]
+
+    return lib
 
 
 def main():
@@ -50,24 +74,21 @@ def main():
     if not page1s:
         sys.exit("无目标库")
     ntgt = len(page1s)
+    cached = load_valid_keys(OUT)
+    res = {}
+    for name, page in zip(names, page1s):
+        key = next((key for key in cached if verify_key(key, page)), None)
+        if key is not None:
+            res[name] = key.hex()
+    if len(res) == ntgt:
+        print(f"已复用 {len(res)} 个目标的已有密钥；未扫描进程内存")
+        return
     iv = generate_initial_vector(1)               # 所有库页1共用
     frag8 = b"".join(bytes(pg[16:24]) for pg in page1s)
     cb0 = b"".join(bytes(pg[8:16]) + bytes(pg[24:32]) for pg in page1s)
     ivflat = iv * ntgt
 
-    if not os.path.exists(LIB):                       # 首次/分发后: 缺 dylib 则现编 validate.c
-        if not os.path.exists(SRC):
-            sys.exit(f"缺 {LIB} 且无源码 {SRC}")
-        print("validate.dylib 不存在, 自动编译 validate.c …", file=sys.stderr)
-        cc = subprocess.run(["clang", "-O3", "-dynamiclib", "-o", LIB, SRC],
-                            capture_output=True, text=True)
-        if cc.returncode or not os.path.exists(LIB):
-            sys.exit(f"编译 validate.c 失败 (需 Xcode 命令行工具):\n{cc.stderr}")
-    lib = ctypes.CDLL(LIB)
-    lib.scan_buf.restype = ctypes.c_long
-    lib.scan_buf.argtypes = [ctypes.c_char_p, ctypes.c_long, ctypes.c_int,
-                             ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
-                             ctypes.c_char_p, ctypes.c_char_p]
+    lib = load_validator()
 
     pid = find_pid()
     if not pid:
@@ -92,6 +113,10 @@ def main():
 
     out_keys = ctypes.create_string_buffer(16 * ntgt)
     found = ctypes.create_string_buffer(ntgt)
+    for t, name in enumerate(names):
+        if name in res:
+            out_keys[t * 16:t * 16 + 16] = bytes.fromhex(res[name])
+            found[t] = b"\x01"
     addr = ctypes.c_uint64(0); size = ctypes.c_uint64(0)
     info = (ctypes.c_int * 10)(); cnt = ctypes.c_uint(10); obj = ctypes.c_uint(0)
     t0 = time.time(); scanned = 0; regions = 0
@@ -112,23 +137,21 @@ def main():
         if regions % 300 == 0 and regions:
             print(f"  ...{scanned // 1024 // 1024}MB {regions}区 {time.time()-t0:.0f}s 命中{sum(found.raw)}")
 
-    res = {}
     for t, n in enumerate(names):
         if found.raw[t]:
             k = out_keys.raw[t * 16:t * 16 + 16]
             if verify_key(k, page1s[t]):
                 res[n] = k.hex()
-                print(f"  [FOUND] {n}: {k.hex()}")
+                print(f"  [FOUND] {n}")
     print(f"\n扫描 {scanned // 1024 // 1024}MB/{regions}区 {time.time()-t0:.0f}s; 命中 {len(res)}/{ntgt}")
     if res:
-        json.dump(res, open(OUT, "w"), indent=2, ensure_ascii=False)
-        try:
-            os.chmod(OUT, 0o600)
-        except OSError:
-            pass
+        with atomic_output(OUT) as stream:
+            json.dump(res, stream, indent=2, ensure_ascii=False)
         print(f"已存 {OUT} → decrypt_wxwork.py")
     else:
         print("未命中(内存中无匹配16B窗口)。可能 key 经轮密钥扩展存储或在>300MB区被跳过。")
+    if len(res) != ntgt:
+        sys.exit("未取得全部目标密钥；已保留找到的有效密钥")
 
 
 if __name__ == "__main__":

@@ -18,16 +18,23 @@ The shared crypto module validates candidate keys before decrypting a database. 
 
 ## macOS workflow
 
-The WeCom desktop client must be running and signed in. The first key-capture setup is documented in `docs/解密思路.md`.
+Only initial key capture requires a running, signed-in WeCom client. The first key-capture setup is documented in `docs/解密思路.md`; ordinary refreshes reuse existing keys and can run offline.
 
 ```bash
 python3 decrypt/macos/read_wecom.py
+# Only when existing keys are unavailable, after preparing the authorized client:
 python3 decrypt/macos/find_key_fast.py
+# Optional: all local databases, including local todos/calendars:
 python3 decrypt/macos/decrypt_wxwork.py
-python3 decrypt/macos/monitor.py --once
+# Optional: explicitly export all chat messages:
+python3 decrypt/macos/read_wecom.py --export /private/path/export
+# After querying, remove the derived chat snapshots:
+python3 decrypt/macos/read_wecom.py --clean
 ```
 
-Use `read_wecom.py` for the normal end-to-end path. The narrower scripts are useful when diagnosing an individual phase.
+`read_wecom.py` refreshes only `Messages1/Info.db` and `Messages1/Session.db`. It fails on missing/invalid keys without scanning memory, and does not export messages by default. **Migration:** the former automatic capture/decrypt/bulk-export behavior is now separated into the explicit commands above. Existing standalone decrypt and export commands remain available.
+
+`--clean` unlinks only those two derived databases and their `-wal`, `-shm`, `-journal` sidecars. It preserves keys, exports, non-chat snapshots and unrelated files, and refuses source-directory overlap or paths escaping the decrypted root. It is intended for a completed task, not while another query is still using the same snapshot. Capture does not log key values; newly compiled native validators are temporary and removed automatically.
 
 ## Query local data
 
@@ -97,10 +104,14 @@ The corrected macOS type labels (14=image, 16=voice) and native cache relations 
 |---|---|
 | `WECOM_PROFILE` | macOS profile directory or its name under the default Profiles root |
 | `WECOM_DATA_DIR` | Windows directory containing `message.db` |
+| `WECOM_STATE_DIR` | macOS runtime parent; a subdirectory for the selected profile holds keys and decrypted data |
+| `WECOM_KEYS_FILE` | Explicit macOS key JSON path shared by capture, decrypt, refresh and monitor commands |
 | `WECOM_DECRYPTED_DIR` | Relocated decrypted root (macOS includes `Messages1/`; Windows contains `message.db`) |
 | `WECOM_CACHE_DIR` | Explicit cache root containing the platform's media subdirectories |
 
 Multiple native accounts require an explicit selection. Invalid overrides fail instead of silently selecting another account. Offline macOS queries can read the configured decrypted root without a running client or an available native profile; media resolution additionally needs its corresponding cache root.
+
+New macOS state defaults to `~/.local/share/wecom-agent/<profile>/`. With no explicit state/key/decrypted override, existing `decrypt/macos/wxwork_keys.json` and `decrypt/macos/decrypted/` are still read in place; no automatic data migration or duplicate backup is made. Explicit overrides take priority, including when the configured key file is missing or invalid.
 
 ## Database snapshots and incremental reads
 

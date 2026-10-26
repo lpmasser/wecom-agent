@@ -23,11 +23,11 @@ from local_io import atomic_output, connect_readonly, private_mkdir
 from wal_snapshot import _metadata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-from wecom_paths import decrypted, info_db, session_db
+from wecom_paths import decrypted, info_db, session_db, keys_file
 SRC_INFO = info_db()
 SRC_SESS = session_db()
 DEC = decrypted("Messages1")
-KEYS = os.path.join(HERE, "wxwork_keys.json")
+KEYS = keys_file()
 STATE = os.path.join(HERE, "export", "monitor_state.json")
 OUTLOG = os.path.join(HERE, "export", "monitor.jsonl")
 

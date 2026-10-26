@@ -1,33 +1,39 @@
 #!/usr/bin/env python3
-"""一键读取企业微信聊天记录(macOS) —— 智能跳过已完成步骤。
-
-  ① 若 wxwork_keys.json 的 key 仍能解 Info.db → 跳过内存扫描;
-     否则跑 find_key_fast.py(需企微运行并登录、已 adhoc 重签)。
-  ② decrypt_wxwork.py 全库解密 → ③ export_wxwork.py 结构化导出。
-日常增量请用 monitor.py。
-用法: read_wecom.py
-"""
+"""Refresh macOS chat snapshots with existing keys; export and cleanup are explicit."""
+import argparse
 import os
+from pathlib import Path
 import subprocess
 import sys
 
 _H = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [_H, os.path.dirname(_H)]
-from wxwork_crypto import PAGE_SZ, load_valid_keys
-
 HERE = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
-from wecom_paths import info_db, decrypted
-INFO = info_db()
-KEYS = os.path.join(HERE, "wxwork_keys.json")
+from wecom_paths import CHAT_DATABASES, decrypted, keys_file, profile_dir
 
 
-def key_valid():
-    if not (os.path.exists(KEYS) and os.path.exists(INFO)):
-        return False
-    with open(INFO, "rb") as f:
-        pg1 = f.read(PAGE_SZ)
-    return bool(load_valid_keys(KEYS, pg1))
+def clean_chat():
+    """Unlink only chat snapshots/sidecars, never keys, exports or a source tree."""
+    source = Path(profile_dir()).resolve()
+    root = Path(decrypted()).resolve()
+    key_path = Path(keys_file()).resolve()
+    if root == source or source in root.parents or root in source.parents:
+        raise ValueError("解密目录与原始 profile 重叠，拒绝清理")
+    targets = [root / (name + suffix) for name in CHAT_DATABASES
+               for suffix in ("", "-wal", "-shm", "-journal")]
+    for path in targets:
+        resolved = path.resolve()
+        if root not in resolved.parents or source in resolved.parents or resolved == key_path:
+            raise ValueError("清理目标指向源库、密钥或解密目录以外，拒绝清理")
+    for path in targets:
+        path.unlink(missing_ok=True)
+    for directory in (root / "Messages1", root):
+        try:
+            directory.rmdir()  # Preserve unrelated files and nonempty directories.
+        except (FileNotFoundError, OSError):
+            pass
+    print("已清理聊天快照；密钥、原始数据和导出保留")
 
 
 def run(script, *args):
@@ -37,20 +43,27 @@ def run(script, *args):
 
 
 def main():
-    if key_valid():
-        print("✓ 已有可用 key（跳过内存扫描）")
-    else:
-        print("✗ 无可用 key → 扫活进程内存（需企微运行并登录、已 adhoc 重签）")
-        run("find_key_fast.py")
-        if not key_valid():
-            sys.exit("扫描后仍无可用 key，检查企微是否登录")
-    run("decrypt_wxwork.py")
-    if subprocess.run([PY, os.path.join(os.path.dirname(HERE), "export_wxwork.py"),
-                       "--db", decrypted("Messages1", "Info.db"),
-                       "--out", os.path.join(HERE, "export")]).returncode != 0:
-        sys.exit("export_wxwork 失败")
-    print("\n✅ 完成。导出在 decrypt/macos/export/messages.csv|json；日常增量用 monitor.py")
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--clean", action="store_true", help="只删除可重建的聊天快照")
+    mode.add_argument("--export", metavar="DIR", help="刷新后显式导出全部聊天为 JSON/CSV")
+    options = parser.parse_args()
+    os.umask(0o077)
+    if options.clean:
+        clean_chat()
+        return
+    # Missing/invalid keys fail here. Capturing keys is a separate, explicit command.
+    run("decrypt_wxwork.py", "--messages-only")
+    if options.export:
+        result = subprocess.run([PY, os.path.join(os.path.dirname(HERE), "export_wxwork.py"),
+                                 "--db", decrypted("Messages1", "Info.db"), "--out", options.export])
+        if result.returncode:
+            sys.exit("export_wxwork 失败")
+    print("聊天快照已刷新；可用 wecom_local.py 查询")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (OSError, ValueError) as error:
+        sys.exit(str(error))
