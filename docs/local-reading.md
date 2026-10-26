@@ -43,6 +43,7 @@ python3 decrypt/macos/wecom_local.py contacts [keyword]
 python3 decrypt/macos/wecom_local.py conversations
 python3 decrypt/macos/wecom_local.py members <conversation>
 python3 decrypt/macos/wecom_local.py search <keyword>
+python3 decrypt/macos/wecom_local.py search <keyword> --conversation <conversation-id> --days 30 --json
 python3 decrypt/macos/wecom_local.py stats
 python3 decrypt/macos/wecom_local.py todo
 python3 decrypt/macos/wecom_local.py calendar
@@ -71,6 +72,14 @@ python3 decrypt/macos/wecom_local.py export <conversation-id> --out decrypt/maco
 `conversations`, `search`, and `chat` accept `--limit 1..2000 --offset N --json`. Results include `count`, `total`, `offset`, `limit`, and `next_offset`; the final page has a null `next_offset`. CLI conversations/search retain their unlimited behavior when `--limit` is omitted. MCP defaults to 100 conversations or 50 messages. Queries stream database rows and retain only the selected search page. Search order is chronological; chat order is newest first, with the local message ID breaking timestamp ties.
 
 `--days` must be a positive integer; omitting it includes all dates. Text bodies, repeated protobuf text fields, whitespace and line breaks are preserved. Searches cover the full decoded body, including its tail. Message results include database table, conversation ID, local ID and server ID. Use conversation IDs when names are duplicated: ambiguous names return candidates before reading, exporting or listing members.
+
+`search --conversation <id-or-unique-name>` filters at the database query before counting or reading message bodies. An explicitly empty or ambiguous conversation fails instead of becoming an account-wide search. Use conversation/contact metadata to locate people; only omit the scope when account-wide message search is intended. A missing or ID-only conversation name can fall back to the exact matching user identity; an existing group name is never replaced by a participant's name.
+
+### Credentials in query output
+
+`chat` and `search` mask recognizable credentials in their shared result serializer, before human-readable, JSON or MCP output. Changed rows include `content_redacted: true`; identity, sender, timestamp, pagination and noncredential text remain available. Search matching still uses the original text. The mask covers labelled API keys/passwords (including full-width colons), URL password fields/userinfo, common bearer/token forms and private-key blocks. It does not guarantee detection of arbitrary unlabelled or obfuscated secrets.
+
+Explicit local exports retain the original body, including credentials if present. This keeps the source record available on the authorized machine without changing the database. Do not print or pass raw exports to an agent; inspect/redact required fields locally first. Output limiting such as `head` is not redaction.
 
 ## Conversation exports with media
 

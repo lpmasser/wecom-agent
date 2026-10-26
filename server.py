@@ -127,17 +127,22 @@ def wecom_members(conversation: str) -> str:
 
 
 @mcp.tool()
-def wecom_search(keyword: str, days: int | None = None, limit: int = 50, offset: int = 0) -> str:
-    """分页全文搜索，保留完整正文和换行。days 为正整数，不传则搜索全部日期。"""
+def wecom_search(keyword: str, days: int | None = None, limit: int = 50, offset: int = 0,
+                 conversation: str | None = None) -> str:
+    """分页搜索，常见凭据在返回前遮盖。conversation 限定会话；days 不传则覆盖全部日期。"""
     try:
         validate_window(limit, offset, days)
         if not keyword.strip():
             raise ValueError("keyword 不能为空")
+        if conversation is not None and not conversation.strip():
+            raise ValueError("conversation 不能为空")
     except ValueError as e:
         return _render({"error": str(e)})
     args = ["--limit", str(limit), "--offset", str(offset)]
     if days is not None:
         args += ["--days", str(days)]
+    if conversation is not None:
+        args += ["--conversation", conversation]
     return _call("search", args + ["--", keyword])
 
 

@@ -81,7 +81,7 @@ def export_chat(store, database, conversation, output_path, *, days=None, output
     entries = manifest["entries"] if manifest else []
     with atomic_output(output_path, newline="" if output_format == "csv" else None) as stream:
         if output_format == "json":
-            json.dump([public_message(r) for r in rows], stream, ensure_ascii=False, indent=2)
+            json.dump([public_message(r, redact=False) for r in rows], stream, ensure_ascii=False, indent=2)
         elif output_format == "csv":
             stream.write("\ufeff")
             columns = ["time", "conversation", "conv_id", "sender", "sender_id", "type", "type_code", "content", "table", "local_id", "server_id"]
@@ -117,7 +117,7 @@ def export_all(store, output, *, days=None, chinese_headers=False):
             writer.writerow([row.get(c) for c in columns])
             if count:
                 jf.write(",\n")
-            json.dump(public_message(row), jf, ensure_ascii=False)
+            json.dump(public_message(row, redact=False), jf, ensure_ascii=False)
             count += 1
         jf.write("\n]\n")
     return {"messages": count, "out": str(output), "files": ["messages.json", "messages.csv"]}

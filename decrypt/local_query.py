@@ -6,9 +6,11 @@ import time
 try:
     from . import export_wxwork as ex
     from .local_io import quote_identifier
+    from .redaction import redact_text
 except ImportError:
     import export_wxwork as ex
     from local_io import quote_identifier
+    from redaction import redact_text
 
 MAX_LIMIT = 2000
 
@@ -26,6 +28,8 @@ def parse_window(args, *, positional=None, export=False):
     parser = argparse.ArgumentParser(add_help=False)
     if positional:
         parser.add_argument(positional)
+    if positional == "keyword":
+        parser.add_argument("--conversation", help="只搜索指定会话 ID 或唯一名称")
     parser.add_argument("--days", type=int)
     if not export:
         parser.add_argument("--limit", type=int)
@@ -77,10 +81,22 @@ class MessageStore:
         self.server_id = "server_id" if platform == "windows" else "RID"
         self.has_server_id = self.server_id in columns
 
+    def conversation_name(self, cid):
+        identity = str(cid)
+        name = self.names.get(cid, self.names.get(identity))
+        if name and str(name).strip() and str(name).strip() != identity:
+            return str(name)
+        # A direct chat can use its peer's stable USER RID as its conversation ID.
+        # Only use that exact identity; never guess from participants or messages.
+        keys = [cid, identity]
+        if identity.isdecimal():
+            keys.append(int(identity))
+        return next((str(self.users[key]) for key in keys if self.users.get(key)), identity)
+
     def conversations(self):
         q = (f"SELECT {quote_identifier(self.conv)}, COUNT(*), MAX(send_time) "
              f"FROM {quote_identifier(self.table)} GROUP BY {quote_identifier(self.conv)}")
-        rows = [{"id": str(cid), "name": str(self.names.get(cid, self.names.get(str(cid), cid))),
+        rows = [{"id": str(cid), "name": self.conversation_name(cid),
                  "messages": count, "last_timestamp": stamp or 0,
                  "last_time": ex.fmt_time(stamp)} for cid, count, stamp in self.conn.execute(q)]
         return sorted(rows, key=lambda r: (-r["last_timestamp"], r["id"]))
@@ -118,7 +134,7 @@ class MessageStore:
             yield {
                 "table": self.table, "local_id": data[self.local_id],
                 "server_id": data.get(self.server_id), "conv_id": str(cid),
-                "conversation": str(self.names.get(cid, self.names.get(str(cid), cid))),
+                "conversation": self.conversation_name(cid),
                 "sender_id": sid, "sender": str(self.sender(sid)),
                 "send_time": data["send_time"], "time": ex.fmt_time(data["send_time"]),
                 "type_code": ct, "type": ex.type_name(ct, self.platform),
@@ -129,7 +145,7 @@ class MessageStore:
         validate_window(limit, offset, days)
         if not isinstance(keyword, str) or not keyword.strip():
             raise ValueError("keyword 不能为空")
-        target = self.target(conversation) if conversation else None
+        target = self.target(conversation) if conversation is not None else None
         needle = keyword.casefold()
         rows, total = [], 0
         for row in self.iter_messages(conversation=target["id"] if target else None, days=days):
@@ -139,7 +155,9 @@ class MessageStore:
                 rows.append(public_message(row))
             total += 1
         result = page(rows, total, limit, offset, "messages", sliced=True)
-        result.update(keyword=keyword, days=days)
+        result.update(keyword=redact_text(keyword), days=days)
+        if target:
+            result["conversation"] = target
         return result
 
     def read_chat(self, conversation, *, limit=50, offset=0, days=None):
@@ -155,8 +173,13 @@ class MessageStore:
         return result
 
 
-def public_message(row):
-    return {k: v for k, v in row.items() if not k.startswith("_")}
+def public_message(row, *, redact=True):
+    result = {k: v for k, v in row.items() if not k.startswith("_")}
+    if redact:
+        content = redact_text(result["content"])
+        if content != result["content"]:
+            result.update(content=content, content_redacted=True)
+    return result
 
 
 def page(rows, total, limit, offset, key, *, sliced=False):

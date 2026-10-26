@@ -113,8 +113,8 @@ $PY decrypt/macos/wecom_local.py <contacts|conversations|members|search|stats|to
 | `contacts [词]` | 本地通讯录搜索 |
 | `conversations` | 会话列表 |
 | `members <会话>` | 群成员与发言数 |
-| `search <词>` | 全文搜索消息 |
-| `chat <会话ID> [--days N] [--limit N] [--offset N]` | 按唯一会话读取完整正文，最新在前 |
+| `search <词> [--conversation <会话ID或唯一名称>]` | 全文搜索；已知会话时限定范围 |
+| `chat <会话ID> [--days N] [--limit N] [--offset N]` | 按唯一会话读取消息，最新在前；常见凭据在返回前遮盖 |
 | `export <会话ID> --out 文件 [--with-media]` | 导出 TXT/Markdown/HTML/JSON/CSV，附逐消息媒体清单 |
 | `stats` | 发言/会话/类型/时间统计 |
 | `todo` / `calendar` | 本地待办 / 日程 |
@@ -122,6 +122,10 @@ $PY decrypt/macos/wecom_local.py <contacts|conversations|members|search|stats|to
 | `openfile <名/词>` | 从聊天记录定位并解析本地文件 |
 
 `conversations`、`search`、`chat` 支持 `--limit 1..2000 --offset N --json`；`search`、`chat`、`export` 的 `--days` 必须为正整数，不传则覆盖全部日期。CLI 的会话列表与搜索不传 limit 时保留全量行为，MCP 默认分别返回 100、50 条。消息正文不截断。名称重名时必须使用返回的会话 ID，不合并群成员。
+
+定位联系人用 `contacts` / `conversations` 元数据，不用跨会话正文搜索找人。查指定会话内的需求或关键词时给 `search` 传 `--conversation`，MCP 对应参数为 `conversation`；仅在用户授权跨会话搜索时省略。不要先全量输出再用 `head` 代替范围控制或脱敏。
+
+`chat` / `search` 的共同查询出口默认用 `[REDACTED]` 遮盖常见凭据（具名 API key、密码/口令、连接串口令、常见 token 和私钥块），文本、JSON 和 MCP 同样生效；被改动的消息带 `content_redacted=true`，来源 ID、人物和时间保留。规则不能保证识别所有无标签、混淆或未知格式的秘密。原始库及显式本地导出不改写，不能把未脱敏导出直接交给模型或打印。需要未知格式原文时先在本机检查和遮盖，再提供必要片段。
 
 `export --with-media` 用企微消息资源标识关联缓存，生成 `<stem>.media.json` 与 `<stem>.assets-<export-id>/`。只导出所选会话/日期范围的媒体；同名文件按资源 ID 区分；缺失、加密或歧义明确标注。具体 schema 和边界见 [本地读取与导出](docs/local-reading.md)。
 

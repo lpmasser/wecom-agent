@@ -27,6 +27,8 @@ decrypt/**/export/
 
 Keep these artifacts local. Do not paste keys, decrypted databases, raw conversations, or authentication tokens into issues, logs, documentation, or commits.
 
+Chat/search output masks recognizable credentials before the result reaches the text/JSON/MCP renderer. This is a display boundary: source databases and explicit local exports remain unchanged. Pattern matching cannot guarantee detection of arbitrary unlabelled or obfuscated secrets; raw exports still require local review/redaction before sharing with an agent. Resolve people through contact/conversation metadata, and restrict message searches to the intended conversation rather than searching unrelated chat bodies.
+
 New macOS runtime data is stored outside the source tree under `~/.local/share/wecom-agent/<profile>/`. `WECOM_STATE_DIR`, `WECOM_KEYS_FILE` and `WECOM_DECRYPTED_DIR` select private locations when needed. Existing legacy files remain usable unless explicit paths are configured. Capture commands save keys atomically with private permissions and report only target names, never key values. Normal `read_wecom.py` refreshes never capture keys; initial capture must be invoked explicitly. Re-signing a client or changing system security settings requires separate operator approval and is not automated by these commands.
 
 ## Online write confirmation

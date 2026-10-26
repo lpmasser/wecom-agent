@@ -39,6 +39,8 @@ On macOS, `read_wecom.py` now only refreshes the chat/name snapshots using exist
 
 Local queries preserve full text and line breaks. MCP conversation/message queries are paginated; duplicate conversation names require an explicit ID. Exports support TXT, Markdown, HTML, JSON and CSV. `--with-media` links native WeCom resource IDs to cached images, files, voice and emotions, with a per-message JSON manifest and a fresh asset directory. Missing, encrypted, ambiguous and unknown media stay explicit. See [local reading and exports](docs/local-reading.md).
 
+Chat/search results mask recognizable credentials before text, JSON or MCP output, marking changed messages with `content_redacted=true`. Original databases and explicit local exports retain the source text; do not feed raw exports to an agent. Use `search <query> --conversation <id>` for a known conversation; contact lookup should use metadata rather than account-wide message search. Pattern-based masking is not a guarantee against unknown or obfuscated secrets.
+
 Select multiple accounts explicitly with `WECOM_PROFILE` (macOS) or `WECOM_DATA_DIR` (Windows). Relocated decrypted databases and media caches use `WECOM_DECRYPTED_DIR` and `WECOM_CACHE_DIR`.
 
 New macOS runtime data defaults to `~/.local/share/wecom-agent/<profile>/`. Use `WECOM_STATE_DIR` to choose its parent or `WECOM_KEYS_FILE` for an existing key file. Existing source-local keys/snapshots remain usable when no new path is configured. Capture commands never print key values.

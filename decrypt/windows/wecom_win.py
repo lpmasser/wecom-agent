@@ -215,7 +215,8 @@ def cmd_search(key, args, js=False):
     options = parse_window(args, positional="keyword")
     store = _store(key)
     try:
-        result = store.search(options.keyword, limit=options.limit, offset=options.offset, days=options.days)
+        result = store.search(options.keyword, limit=options.limit, offset=options.offset,
+                              days=options.days, conversation=options.conversation)
     finally:
         store.conn.close()
     if js:
