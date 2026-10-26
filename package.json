@@ -8,6 +8,8 @@
     "sourcey": "3.6.5"
   },
   "overrides": {
+    "sanitize-html": "2.18.1",
+    "vite": "8.1.6",
     "js-yaml": "4.3.2",
     "nanoid": "3.3.18",
     "postcss": "8.5.26",
