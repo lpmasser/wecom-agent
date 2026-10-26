@@ -149,8 +149,10 @@ python decrypt/windows/wecom_win.py <key> <子命令>
 本地读取 MCP 只是 `wecom_local.py --json` 的薄门面。不要为了本地查询强制走 MCP；直接跑 CLI 更透明。
 
 ```bash
-bash setup.sh
+bash setup.sh --mcp
 ```
+
+`bash setup.sh` 默认只安装本地 CLI 依赖，不修改 MCP 注册；确实需要 MCP 才传 `--mcp`。已有安装不会因省略该选项而被卸载。
 
 本地读取工具：`wecom_contacts/conversations/members/search/stats/todo/calendar/media/openfile`，以及 `wecom_read_chat`、`wecom_export_chat`。
 

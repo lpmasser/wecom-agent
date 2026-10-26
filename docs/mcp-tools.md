@@ -83,7 +83,7 @@ Every online write tool accepts `confirmed`. The facade returns a confirmation r
 python3 server.py
 ```
 
-On macOS, `bash setup.sh` creates an isolated `.venv` from pinned dependencies and registers the server when its supported client command is present. Direct module calls remain available for testing and automation.
+On macOS, `bash setup.sh --mcp` creates an isolated `.venv` with the full pinned dependencies and registers the server when Claude Code is present. Without `--mcp`, setup installs only local CLI dependencies and leaves MCP registration untouched. Direct module calls remain available for testing and automation.
 
 ## JSON inputs
 

@@ -67,14 +67,14 @@ $PY -m online.selfcheck
 ## MCP
 
 ```bash
-bash setup.sh
+bash setup.sh --mcp
 ```
 
 MCP 保留本地读取工具：`wecom_contacts/conversations/members/search/stats/todo/calendar/media/openfile`，新增 `wecom_read_chat`、`wecom_export_chat`，并提供 `wecom_local_doc_read_path`、`wecom_local_doc_search` 读取本地缓存/下载文档。
 
 在线读取工具包括 `wecom_doc_read`、`wecom_sheet_get_range` 与 `wecom_smartsheet_records`；创建、导入、覆写、追加、更新等线上写操作仍必须传 `confirmed=True`。
 
-`setup.sh` 会根据锁定的 [requirements.txt](requirements.txt) 创建隔离 `.venv`；本地文档解析的可选依赖见 [requirements-documents.txt](requirements-documents.txt)。
+`bash setup.sh` 只在隔离 `.venv` 安装 [本地 CLI 依赖](requirements-core.txt)，不修改 MCP 注册；显式 `bash setup.sh --mcp` 才安装完整的 [requirements.txt](requirements.txt)，并在 Claude Code 可用时注册 MCP。已有环境或注册不会被后续默认安装删除。本地文档解析的可选依赖见 [requirements-documents.txt](requirements-documents.txt)。
 
 ## 开发验证
 

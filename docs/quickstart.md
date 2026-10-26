@@ -69,10 +69,10 @@ Without `confirmed=True`, the wrapper raises `PermissionError` before invoking `
 
 ## Optional MCP facade
 
-On macOS, `bash setup.sh` creates an isolated `.venv` from the pinned dependency file and registers the local MCP server when a supported client command is available. The underlying commands remain usable directly without MCP.
+On macOS, `bash setup.sh` installs only the local CLI dependencies. Add `--mcp` to install the MCP dependency and register the local server when Claude Code is available. A default install never removes existing MCP packages or registrations. The full `requirements.txt` also remains available for manual MCP/development installations.
 
 ```bash
-bash setup.sh
+bash setup.sh --mcp
 .venv/bin/python server.py
 ```
 

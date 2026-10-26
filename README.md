@@ -65,12 +65,12 @@ Implemented wrappers:
 ## MCP
 
 ```bash
-bash setup.sh
+bash setup.sh --mcp
 ```
 
 MCP keeps local tools (`wecom_contacts`, `wecom_search`, `wecom_openfile`, etc.), adds local document fallback tools (`wecom_local_doc_read_path`, `wecom_local_doc_search`), and exposes current online reads including `wecom_doc_read`, `wecom_sheet_get_range`, and `wecom_smartsheet_records`. Online write tools require `confirmed=True`.
 
-`setup.sh` creates an isolated `.venv` from the pinned [requirements](requirements.txt). Optional local document parsers are listed in [requirements-documents.txt](requirements-documents.txt).
+`bash setup.sh` installs only [local CLI dependencies](requirements-core.txt) into an isolated `.venv`, without changing any MCP registration. `bash setup.sh --mcp` explicitly installs the full [requirements](requirements.txt) and registers MCP when Claude Code is available. Existing environments/registrations are not removed by a later default install. Optional local document parsers are listed in [requirements-documents.txt](requirements-documents.txt).
 
 ## Development
 

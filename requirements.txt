@@ -1,2 +1,2 @@
-cryptography==50.0.1
+-r requirements-core.txt
 mcp==1.29.1
