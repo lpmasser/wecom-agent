@@ -50,14 +50,15 @@ class MacReadWorkflowTests(unittest.TestCase):
         self.dec = self.state / "profile/decrypted"
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("WECOM_")}
         self.env.update(WECOM_PROFILE=str(self.profile), WECOM_STATE_DIR=str(self.state),
-                        PYTHONDONTWRITEBYTECODE="1")
+                        PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8")
         wecom_paths.profile_dir.cache_clear()
         self.addCleanup(wecom_paths.profile_dir.cache_clear)
 
     def run_script(self, name, *args, check=True, overrides=None):
         env = dict(self.env, **(overrides or {}))
         return subprocess.run([sys.executable, str(MAC / name), *args], env=env,
-                              cwd=self.root, capture_output=True, text=True, check=check, timeout=15)
+                              cwd=self.root, capture_output=True, text=True, encoding="utf-8",
+                              check=check, timeout=15)
 
     def module(self, name):
         spec = importlib.util.spec_from_file_location("workflow_" + name, MAC / (name + ".py"))
