@@ -28,6 +28,7 @@ allowed-tools: Bash
 | 读/建/改企业微信文档、表格、智能表格 | 优先用 `online/` 或新增 MCP 工具；写操作先确认 |
 | 查/建/改/取消日程 | `wecom-cli calendar ...`；若企业不支持则说明权限边界 |
 | 查/建/取消会议 | `wecom-cli meeting ...`；若企业不支持则说明权限边界 |
+| 下载已有会议视频、按转写抽取关键画面 | 官方 CLI 定位后，用 `online/recordings.py` 复用现有会话走下载协议；见下方说明 |
 | 查/建/更新/删除待办 | `wecom-cli todo ...`；写操作先确认 |
 | 自动回复/流式回复 | Bot SDK；未接入前说明暂未落地 |
 
@@ -62,6 +63,8 @@ wecom-cli <service> [resource...] <method> --json '<json参数>'
 遇到具体参数不确定时，优先查 `wecom-cli <category> --doc` 或 WecomTeam/wecom-cli 对应的 `skills/wecomcli-*/references`。
 
 会议纪要和待办来自 `meeting get`；逐句原文来自 `meeting original get`，不能互相替代。直接复用官方 CLI 的 `--page-count N --output 文件` 自动分页与原始响应落盘（NDJSON，每行一页），检查末页 `has_more`；若仍为 true，沿 `next_cursor` 继续，不把页数上限当作完整结果。保留会议/子会议标识、原时间和发言人。多录音段的范围按当前 `--doc` 与实际响应确认，无法确认时明确说明，不猜测段数。
+
+需要视频时，优先接口／协议取材。`tmeet` 只返回回放页时，读取[会议视频下载](docs/recording-video.md)，用 `uv run online/recordings.py` 下载；该入口只读本机已登录的 macOS 企业微信会话并尊重资源下载权限，不靠逐次操作屏幕。抽帧与同一云录制文件的相对转写时间对应。
 
 ## A 在线文档/表格
 
